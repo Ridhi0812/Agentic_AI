@@ -1,17 +1,40 @@
 
+import os
 import json
-import ollama
-from ollama import AsyncClient
-from fastapi import APIRouter, Request
 from pathlib import Path
 
+from ollama import AsyncClient
+from fastapi import APIRouter, Request, HTTPException
+
 router = APIRouter()
-client = AsyncClient(host="http://localhost:11434")
+
+# =========================================================
+# OLLAMA CLOUD CONFIGURATION
+# =========================================================
+
+OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "").strip()
+
+client = AsyncClient(
+    host="https://ollama.com",
+    headers={
+        "Authorization": f"Bearer {OLLAMA_API_KEY}"
+    } if OLLAMA_API_KEY else {},
+    timeout=120.0,
+)
 
 MAX_LOOPS = 8
 
-# File operations are restricted to this workspace.
+# Restrict file operations to the backend workspace.
 WORKSPACE = Path.cwd().resolve()
+
+
+def ensure_api_key():
+    """Check that the Ollama Cloud API key is configured."""
+    if not OLLAMA_API_KEY:
+        raise RuntimeError(
+            "OLLAMA_API_KEY is missing. "
+            "Configure it in the Render environment variables."
+        )
 
 
 # =========================================================
@@ -63,13 +86,16 @@ class Tools:
             "type": "function",
             "function": {
                 "name": "read_file",
-                "description": "Read a supported file such as TXT, PY, JSON, CSV, XLSX or PDF.",
+                "description": (
+                    "Read a supported file such as TXT, PY, JSON, "
+                    "CSV, XLSX or PDF."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "path": {
                             "type": "string",
-                            "description": "File path relative to workspace."
+                            "description": "File path relative to the workspace."
                         }
                     },
                     "required": ["path"]
@@ -80,13 +106,13 @@ class Tools:
             "type": "function",
             "function": {
                 "name": "write_file",
-                "description": "Create a new text file or overwrite an existing text file.",
+                "description": "Create or overwrite a supported text file.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "path": {
                             "type": "string",
-                            "description": "File path relative to workspace."
+                            "description": "File path relative to the workspace."
                         },
                         "content": {
                             "type": "string",
@@ -107,7 +133,7 @@ class Tools:
                     "properties": {
                         "path": {
                             "type": "string",
-                            "description": "File path relative to workspace."
+                            "description": "File path relative to the workspace."
                         },
                         "old_text": {
                             "type": "string",
@@ -124,23 +150,25 @@ class Tools:
         }
     ]
 
-    # =====================================================
-    # 2. TOOL EXECUTION / DISPATCH
-    # =====================================================
+    # -----------------------------------------------------
+    # TOOL EXECUTION
+    # -----------------------------------------------------
 
     def _safe_path(self, path):
-        """Resolve paths and prevent access outside the workspace."""
         target = (WORKSPACE / path).resolve()
 
         if not target.is_relative_to(WORKSPACE):
-            raise ValueError("Access outside the workspace is not allowed.")
+            raise ValueError(
+                "Access outside the workspace is not allowed."
+            )
 
         return target
 
     async def dispatch(self, name, args):
-        """Execute the tool selected by the model."""
         if not isinstance(args, dict):
-            raise ValueError("Tool arguments must be a dictionary.")
+            raise ValueError(
+                "Tool arguments must be a dictionary."
+            )
 
         methods = {
             "list_directory": self._list_directory,
@@ -166,6 +194,7 @@ class Tools:
             raise ValueError("Directory does not exist.")
 
         items = []
+
         for item in sorted(directory.iterdir()):
             items.append({
                 "name": item.name,
@@ -181,14 +210,16 @@ class Tools:
             raise ValueError("Directory does not exist.")
 
         results = []
+
         for item in directory.rglob(pattern):
-            # Do not follow symlinks outside the workspace.
             try:
                 item.resolve().relative_to(WORKSPACE)
             except ValueError:
                 continue
 
-            results.append(str(item.relative_to(WORKSPACE)))
+            results.append(
+                str(item.relative_to(WORKSPACE))
+            )
 
             if len(results) >= 500:
                 break
@@ -203,12 +234,14 @@ class Tools:
 
         suffix = file_path.suffix.lower()
 
-        if suffix in {
+        text_extensions = {
             ".txt", ".md", ".py", ".json",
             ".yaml", ".yml", ".html", ".css",
             ".js", ".ts", ".jsx", ".tsx", ".csv",
             ".xml", ".ini", ".log"
-        }:
+        }
+
+        if suffix in text_extensions:
             return file_path.read_text(encoding="utf-8")
 
         if suffix == ".pdf":
@@ -216,41 +249,69 @@ class Tools:
 
             with pdfplumber.open(file_path) as pdf:
                 return "\n".join(
-                    page.extract_text() or "" for page in pdf.pages
+                    page.extract_text() or ""
+                    for page in pdf.pages
                 )
 
         if suffix == ".xlsx":
             from openpyxl import load_workbook
 
             workbook = load_workbook(
-                file_path, read_only=True, data_only=True
+                file_path,
+                read_only=True,
+                data_only=True
             )
-            output = {}
 
-            for sheet in workbook.worksheets:
-                output[sheet.title] = [
-                    list(row) for row in sheet.iter_rows(values_only=True)
-                ]
+            try:
+                output = {}
 
-            workbook.close()
-            return json.dumps(output, default=str, ensure_ascii=False)
+                for sheet in workbook.worksheets:
+                    output[sheet.title] = [
+                        list(row)
+                        for row in sheet.iter_rows(
+                            values_only=True
+                        )
+                    ]
+
+                return json.dumps(
+                    output,
+                    default=str,
+                    ensure_ascii=False
+                )
+            finally:
+                workbook.close()
 
         raise ValueError(f"Unsupported file type: {suffix}")
 
     async def _write_file(self, path, content):
         file_path = self._safe_path(path)
 
-        if file_path.suffix.lower() not in {
-            ".txt", ".md", ".py", ".json", ".yaml",
-            ".yml", ".html", ".css", ".js", ".ts",
-            ".jsx", ".tsx", ".csv", ".xml", ".ini", ".log"
-        }:
-            raise ValueError("Writing is limited to supported text files.")
+        allowed_extensions = {
+            ".txt", ".md", ".py", ".json",
+            ".yaml", ".yml", ".html", ".css",
+            ".js", ".ts", ".jsx", ".tsx",
+            ".csv", ".xml", ".ini", ".log"
+        }
 
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_text(content, encoding="utf-8")
+        if file_path.suffix.lower() not in allowed_extensions:
+            raise ValueError(
+                "Writing is limited to supported text files."
+            )
 
-        return f"File written successfully: {file_path.relative_to(WORKSPACE)}"
+        file_path.parent.mkdir(
+            parents=True,
+            exist_ok=True
+        )
+
+        file_path.write_text(
+            content,
+            encoding="utf-8"
+        )
+
+        return (
+            "File written successfully: "
+            f"{file_path.relative_to(WORKSPACE)}"
+        )
 
     async def _edit_file(self, path, old_text, new_text):
         file_path = self._safe_path(path)
@@ -258,22 +319,36 @@ class Tools:
         if not file_path.is_file():
             raise ValueError("File does not exist.")
 
-        if file_path.suffix.lower() not in {
-            ".txt", ".md", ".py", ".json", ".yaml",
-            ".yml", ".html", ".css", ".js", ".ts",
-            ".jsx", ".tsx", ".csv", ".xml", ".ini", ".log"
-        }:
-            raise ValueError("Editing is limited to supported text files.")
+        allowed_extensions = {
+            ".txt", ".md", ".py", ".json",
+            ".yaml", ".yml", ".html", ".css",
+            ".js", ".ts", ".jsx", ".tsx",
+            ".csv", ".xml", ".ini", ".log"
+        }
 
-        content = file_path.read_text(encoding="utf-8")
+        if file_path.suffix.lower() not in allowed_extensions:
+            raise ValueError(
+                "Editing is limited to supported text files."
+            )
+
+        content = file_path.read_text(
+            encoding="utf-8"
+        )
 
         if old_text not in content:
             return "Edit failed: old_text was not found in the file."
 
         updated = content.replace(old_text, new_text)
-        file_path.write_text(updated, encoding="utf-8")
 
-        return f"File edited successfully: {file_path.relative_to(WORKSPACE)}"
+        file_path.write_text(
+            updated,
+            encoding="utf-8"
+        )
+
+        return (
+            "File edited successfully: "
+            f"{file_path.relative_to(WORKSPACE)}"
+        )
 
 
 _tools = Tools()
@@ -281,7 +356,7 @@ tools = Tools.DEFINITIONS
 
 
 # =========================================================
-# SYSTEM PROMPT
+# 2. SYSTEM PROMPT
 # =========================================================
 
 SYSTEM_PROMPT = """
@@ -301,10 +376,10 @@ You are an intelligent closed-loop agent.
 
 
 # =========================================================
-# FORMATTER
+# 3. HTML FORMATTER
 # =========================================================
 
-async def formator(input_data):
+async def formator(input_data, model_name):
     formatter_messages = [
         {
             "role": "system",
@@ -323,7 +398,7 @@ Return only the formatted output.
     ]
 
     response = await client.chat(
-        model="gemma4:31b-cloud",
+        model=model_name,
         messages=formatter_messages
     )
 
@@ -332,6 +407,7 @@ Return only the formatted output.
 
     if answer.startswith("```"):
         answer = answer.replace("```html", "", 1)
+
         if answer.endswith("```"):
             answer = answer[:-3]
 
@@ -339,10 +415,12 @@ Return only the formatted output.
 
 
 # =========================================================
-# 3. AGENT LOOP
+# 4. AGENT LOOP
 # =========================================================
 
 async def message(model_name, tokens, messages):
+    ensure_api_key()
+
     ollama_messages = [
         {
             "role": "system",
@@ -359,7 +437,6 @@ async def message(model_name, tokens, messages):
     while loop_count < MAX_LOOPS:
         loop_count += 1
 
-        # Pass the tool definitions to Ollama here.
         response = await client.chat(
             model=model_name,
             messages=ollama_messages,
@@ -372,12 +449,12 @@ async def message(model_name, tokens, messages):
         assistant_message = response.message
         tool_calls = assistant_message.tool_calls or []
 
-        # No more tool calls: model has produced its final answer.
+        # No tool calls means the model has completed its answer.
         if not tool_calls:
             answer = assistant_message.content or ""
             break
 
-        # Preserve the assistant's tool-call message in the history.
+        # Preserve the assistant's tool-call message.
         ollama_messages.append(assistant_message)
 
         for tool_call in tool_calls:
@@ -385,13 +462,18 @@ async def message(model_name, tokens, messages):
             tool_args = tool_call.function.arguments
 
             logs.append(
-                f"Loop {loop_count}: {tool_name}({tool_args})"
+                f"Loop {loop_count}: "
+                f"{tool_name}({tool_args})"
             )
 
-            # Execute the requested function in Python.
-            result = await _tools.dispatch(tool_name, tool_args)
+            result = await _tools.dispatch(
+                tool_name,
+                tool_args
+            )
 
-            logs.append(f"Result: {result[:500]}")
+            logs.append(
+                f"Result: {result[:500]}"
+            )
 
             # Send the tool result back to the model.
             ollama_messages.append({
@@ -416,26 +498,46 @@ async def message(model_name, tokens, messages):
     print(f"Agent loops: {loop_count}")
     print(f"Final answer: {answer}")
 
-    return await formator(answer)
+    return await formator(answer, model_name)
 
 
 # =========================================================
-# FASTAPI CHAT ROUTE
+# 5. FASTAPI CHAT ROUTE
 # =========================================================
 
 @router.post("/chat")
 async def chatbot(request: Request):
     try:
+        ensure_api_key()
+
         body = await request.json()
 
-        messages = body["messages"]
-        model_name = body["model"]
-        tokens = body.get("options", {}).get("num_predict", 2048)
+        messages = body.get("messages", [])
+        model_name = body.get("model", "").strip()
+        tokens = body.get(
+            "options", {}
+        ).get("num_predict", 2048)
+
+        if not model_name:
+            raise HTTPException(
+                status_code=400,
+                detail="A model name is required."
+            )
+
+        if not isinstance(messages, list) or not messages:
+            raise HTTPException(
+                status_code=400,
+                detail="At least one message is required."
+            )
 
         print(f"Model: {model_name}")
         print(f"Tokens: {tokens}")
 
-        answer = await message(model_name, tokens, messages)
+        answer = await message(
+            model_name,
+            tokens,
+            messages
+        )
 
         return {
             "message": {
@@ -444,34 +546,47 @@ async def chatbot(request: Request):
             }
         }
 
+    except HTTPException:
+        raise
+
     except Exception as exc:
         print(f"Chat error: {exc}")
 
-        return {
-            "message": {
-                "role": "assistant",
-                "content": str(exc)
-            }
-        }
+        raise HTTPException(
+            status_code=502,
+            detail=f"Chat request failed: {str(exc)}"
+        ) from exc
 
 
 # =========================================================
-# FASTAPI MODEL LIST ROUTE
+# 6. FASTAPI MODEL LIST ROUTE
 # =========================================================
 
 @router.get("/model_list")
 async def models(request: Request):
     try:
+        ensure_api_key()
+
         model_response = await client.list()
 
         model_names = [
-            item.model for item in model_response.models
+            getattr(item, "model", None)
+            or getattr(item, "name", None)
+            for item in model_response.models
         ]
 
-        return {"models": model_names}
+        model_names = [
+            name for name in model_names if name
+        ]
+
+        return {
+            "models": model_names
+        }
 
     except Exception as exc:
-        return {
-            "error": str(exc),
-            "models": []
-        }
+        print(f"Model list error: {exc}")
+
+        raise HTTPException(
+            status_code=502,
+            detail=f"Could not fetch Ollama Cloud models: {str(exc)}"
+        ) from exc
