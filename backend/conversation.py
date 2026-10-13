@@ -12,7 +12,7 @@ router = APIRouter()
 # OLLAMA CLOUD CONFIGURATION
 # =========================================================
 
-OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "").strip()
+OLLAMA_API_KEY = "e61dd06a69d44f37af7e1e7762824c52.YMSFBeB3Ttc8pb2YkGUwidtT"
 
 client = AsyncClient(
     host="https://ollama.com",
