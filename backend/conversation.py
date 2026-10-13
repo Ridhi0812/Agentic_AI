@@ -384,11 +384,22 @@ async def formator(input_data, model_name):
         {
             "role": "system",
             "content": """
-Format the input as HTML only.
-Use appropriate headings, paragraphs, lists, tables and code tags.
-Preserve the meaning and code.
-Do not add suggestions or information that is absent from the input.
-Return only the formatted output.
+            1.you are a input to output formator who get the input data and returns into the reformated html output
+             with following condition 
+             output format :
+                            1.the output should be formatted in html tags 
+                                1.1. like heading , paragraph or tables etc 
+                                1.2. there are few additional tags i.e.
+                                    1.2.1 <python> </python> for python code
+                                    1.2.2 <react> </react> for react code 
+                                    1.2.3. and so on code tags for any code in the output
+                                    1.2.4. you can use these tags for the mathematical solutions or solution or part of message which should /can be copied
+                                1.3. instead of dollar sign or $ sign you should use html tags for all practical purposes
+                                1.4. there is no maths tag here
+                        
+                            2.If input already contains html code for visualization then pack in the output
+                            3.the output should be only reformated data there should be not markdown or suggestions etc
+                            4.Dont insert color or other css tags etc in codes tag  
 """
         },
         {
