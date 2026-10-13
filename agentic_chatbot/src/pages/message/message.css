@@ -1,0 +1,473 @@
+/* ==========================================================================
+   Message list (the only element that scrolls)
+
+   Relies on --chat-* custom properties defined in chat_panel.css's
+   .chat-screen scope. This file is only ever rendered inside .chat-screen,
+   so those variables are in scope via normal CSS cascade.
+   ========================================================================== */
+
+.chat-context-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-bottom: 8px; /* nudges it up to align with the bubble's baseline */
+  border-radius: 5px;
+  border: 1.5px solid var(--chat-ink-soft);
+  background: transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.chat-context-checkbox:hover {
+  border-color: var(--chat-accent);
+}
+
+.chat-context-checkbox:checked {
+  background: linear-gradient(135deg, var(--chat-accent), var(--chat-accent-2));
+  border-color: transparent;
+  box-shadow: 0 0 0 3px var(--chat-accent-glow);
+}
+
+.chat-context-checkbox:checked::after {
+  content: "";
+  width: 4px;
+  height: 8px;
+  border: solid var(--chat-accent-ink);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) translate(-1px, -1px);
+}
+
+.chat-context-checkbox:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.chat-context-checkbox:disabled:hover {
+  border-color: var(--chat-ink-soft);
+}
+
+.chat-context-label-auto {
+  font-style: italic;
+  color: var(--chat-ink-soft);
+  cursor: default;
+}
+
+.chat-context-checkbox:indeterminate {
+  background: var(--chat-ink-soft);
+  border-color: transparent;
+}
+
+.chat-context-label .chat-context-checkbox {
+  margin-bottom: 0;
+}
+
+.chat-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--chat-border) transparent;
+}
+
+.chat-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+}
+
+.chat-row-mine {
+  justify-content: flex-end;
+}
+
+.chat-row-theirs {
+  justify-content: flex-start;
+}
+
+.chat-bubble {
+  max-width: 76%;
+  padding: 7px 11px;
+  border-radius: var(--chat-radius);
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+  transition: opacity 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Assistant replies may contain inline code editors, which need real
+   width to lay out lines/scrollbars sensibly -- give them more room than
+   a typical short text bubble. */
+.chat-bubble-theirs {
+  max-width: 92%;
+  background: var(--chat-bubble-theirs);
+  color: var(--chat-ink);
+  border-bottom-left-radius: 6px;
+}
+
+.chat-bubble-mine {
+  background: linear-gradient(135deg, var(--chat-accent), var(--chat-accent-2));
+  color: var(--chat-accent-ink);
+  border-bottom-right-radius: 6px;
+  box-shadow: 0 3px 12px var(--chat-accent-glow);
+}
+
+.chat-row-mine .chat-bubble:not(.chat-bubble-tail) {
+  border-bottom-right-radius: var(--chat-radius);
+}
+
+.chat-row-theirs .chat-bubble:not(.chat-bubble-tail) {
+  border-bottom-left-radius: var(--chat-radius);
+}
+
+/* Excluded (unselected as context) messages get a strong, unmistakable
+   treatment: desaturated, dashed outline, no glow, plus a small label. */
+.chat-bubble-excluded {
+  opacity: 0.55;
+  filter: grayscale(65%);
+  box-shadow: none;
+  border: 1.5px dashed var(--chat-ink-soft);
+}
+
+.chat-bubble-excluded.chat-bubble-mine {
+  background: var(--chat-ink-soft);
+}
+
+.chat-bubble-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0; /* lets images/text shrink instead of overflowing the bubble */
+}
+
+.chat-bubble-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.42;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chat-bubble-time {
+  font-size: 9.5px;
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
+/* Typing indicator */
+.chat-typing {
+  padding: 12px 14px;
+  gap: 4px;
+  align-items: center;
+}
+
+.chat-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--chat-ink-soft);
+  animation: chat-bounce 1.2s infinite ease-in-out;
+}
+
+.chat-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.chat-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes chat-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+/* ==========================================================================
+   Image attachments — inside a sent message bubble
+   ========================================================================== */
+
+.chat-image-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 260px;
+}
+
+.chat-image-thumb {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 12px;
+  display: block;
+  cursor: zoom-in;
+}
+
+/* ==========================================================================
+   HTML rendering (assistant replies) — backend sends real HTML now,
+   rendered via dangerouslySetInnerHTML, so these style the actual tags
+   instead of markdown-derived classes.
+   ========================================================================== */
+
+.chat-html-content {
+  font-size: 13px;
+  line-height: 1.45;
+  word-break: break-word;
+  text-align: left;
+}
+
+/* The backend's HTML may carry its own inline style="text-align:center"
+   or similar on individual elements -- override unconditionally so our
+   layout always wins regardless of what the model outputs. */
+.chat-html-content * {
+  text-align: left !important;
+}
+
+.chat-html-content p {
+  margin: 0 0 6px;
+}
+
+.chat-html-content p:last-child {
+  margin-bottom: 0;
+}
+
+.chat-html-content ul,
+.chat-html-content ol {
+  margin: 0 0 6px;
+  padding-left: 18px;
+}
+
+.chat-html-content ul:last-child,
+.chat-html-content ol:last-child {
+  margin-bottom: 0;
+}
+
+.chat-html-content li {
+  margin-bottom: 2px;
+}
+
+.chat-html-content h1,
+.chat-html-content h2,
+.chat-html-content h3,
+.chat-html-content h4 {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 10px 0 6px;
+}
+
+.chat-html-content h1:first-child,
+.chat-html-content h2:first-child,
+.chat-html-content h3:first-child,
+.chat-html-content h4:first-child {
+  margin-top: 0;
+}
+
+.chat-html-content h1 {
+  font-size: 17px;
+}
+.chat-html-content h2 {
+  font-size: 15.5px;
+}
+.chat-html-content h3 {
+  font-size: 14px;
+}
+.chat-html-content h4 {
+  font-size: 13px;
+}
+
+.chat-html-content strong {
+  font-weight: 600;
+}
+
+.chat-html-content blockquote {
+  margin: 0 0 6px;
+  padding-left: 10px;
+  border-left: 2px solid var(--chat-border);
+  color: var(--chat-ink-soft);
+}
+
+.chat-html-content table {
+  border-collapse: collapse;
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  width: 100%;
+}
+
+.chat-html-content th,
+.chat-html-content td {
+  border: 1px solid var(--chat-border);
+  padding: 4px 8px;
+  text-align: left;
+}
+
+/* Inline code reads clearly as code: tinted pill, hairline border,
+   and a monospace face distinct from the surrounding prose. */
+.chat-inline-code,
+.chat-html-content code {
+  font-family: var(--font-mono);
+  background: var(--chat-inline-code-bg);
+  border: 1px solid var(--chat-inline-code-border);
+  color: var(--chat-inline-code-fg);
+  padding: 1.5px 6px;
+  border-radius: 5px;
+  font-size: 0.87em;
+}
+
+.chat-bubble-mine .chat-inline-code {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: var(--chat-accent-ink);
+}
+
+.chat-html-content a {
+  color: var(--chat-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ==========================================================================
+   Code chunks inside a chat bubble
+
+   Short blocks (<= COLLAPSE_THRESHOLD_LINES) render as a small always-
+   editable inline editor. Long blocks render as a static, read-only,
+   syntax-highlighted preview card that opens the docked CodePanel on
+   click, matching Claude.ai's artifact pattern instead of growing the
+   bubble itself.
+   ========================================================================== */
+
+.chat-code-lang {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+  color: var(--chat-accent);
+  font-weight: 500;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.chat-code-line-count {
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--chat-ink-soft);
+  font-weight: 400;
+  font-size: 10px;
+}
+
+/* -- Short, always-editable inline block -- */
+
+.chat-code-inline {
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--chat-code-border);
+  background: var(--chat-code-bg);
+  box-shadow: var(--chat-shadow-soft);
+}
+
+.chat-code-inline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px 5px 14px;
+  background: var(--chat-code-header-bg);
+  border-bottom: 1px solid var(--chat-code-border);
+}
+
+.chat-code-inline-editor {
+  height: 96px;
+}
+
+.chat-code-editor-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: var(--chat-code-bg);
+  color: var(--chat-code-chrome-fg-muted);
+  font-size: 11.5px;
+}
+
+/* -- Long block: static clickable preview card -- */
+
+.chat-code-preview-card {
+  position: relative;
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--chat-code-border);
+  background: var(--chat-code-bg);
+  box-shadow: var(--chat-shadow-soft);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.chat-code-preview-card:hover {
+  border-color: var(--chat-accent);
+  box-shadow: 0 6px 20px var(--chat-focus-glow);
+}
+
+.chat-code-preview-open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.chat-code-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px 5px 14px;
+  background: var(--chat-code-header-bg);
+  border-bottom: 1px solid var(--chat-code-border);
+}
+
+.chat-code-preview-editor {
+  height: 62px;
+  pointer-events: none;
+}
+
+.chat-code-preview-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 26px;
+  height: 34px;
+  background: linear-gradient(180deg, transparent, var(--chat-code-bg) 90%);
+  pointer-events: none;
+}
+
+.chat-code-preview-cta {
+  display: block;
+  width: 100%;
+  padding: 6px;
+  text-align: center;
+  border-top: 1px solid var(--chat-code-border);
+  background: var(--chat-code-header-bg);
+  color: var(--chat-accent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+}

@@ -1,0 +1,297 @@
+/* ==========================================================================
+   Code panel -- docked side panel, Claude.ai artifact-style, now with
+   tabbed editors (optional 2-way split) and a tabbed, minimizable
+   multi-session terminal.
+
+   Relies on --chat-* custom properties defined in chat_panel.css's
+   .chat-screen scope. This file is only ever rendered inside .chat-screen,
+   so those variables are in scope via normal CSS cascade.
+   ========================================================================== */
+
+.code-panel {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  border-left: 1px solid var(--chat-border);
+  background: var(--chat-code-bg);
+}
+
+.code-panel-resize-handle {
+  position: absolute;
+  top: 0;
+  left: -4px;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 5;
+}
+
+.code-panel-resize-handle:hover,
+.code-panel-resize-handle:active {
+  background: var(--chat-accent-glow);
+}
+
+.code-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  padding: 6px 8px 6px 12px;
+  background: var(--chat-code-header-bg);
+  border-bottom: 1px solid var(--chat-code-border);
+}
+
+.code-panel-lang {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+  color: var(--chat-accent);
+  font-weight: 500;
+}
+
+.code-panel-close {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: none;
+  background: none;
+  color: var(--chat-code-chrome-fg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.code-panel-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.code-panel-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ==========================================================================
+   Editor area: tab strip + one or two side-by-side panes
+   ========================================================================== */
+
+.code-panel-editor-area {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Shared tab-strip look, reused by both the editor tabs and the
+   terminal-session tabs below. */
+.code-panel-tabstrip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  background: var(--chat-code-header-bg);
+  border-bottom: 1px solid var(--chat-code-border);
+  min-height: 30px;
+}
+
+.code-panel-tabstrip-scroll {
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  flex: 1;
+  min-width: 0;
+}
+
+.code-panel-tabstrip-scroll::-webkit-scrollbar {
+  height: 3px;
+}
+
+.code-panel-tab-empty {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--chat-ink-soft);
+  font-family: var(--font-mono);
+}
+
+.code-panel-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 12px;
+  border: none;
+  border-right: 1px solid var(--chat-code-border);
+  background: none;
+  color: var(--chat-code-chrome-fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: lowercase;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.code-panel-tab:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--chat-code-chrome-fg);
+}
+
+.code-panel-tab-active {
+  background: var(--chat-code-bg);
+  color: var(--chat-accent);
+  box-shadow: inset 0 -2px 0 var(--chat-accent);
+}
+
+/* A tab currently shown in the split pane gets a subtle secondary
+   indicator distinct from "active", since both can be true at once. */
+.code-panel-tab-split:not(.code-panel-tab-active) {
+  color: var(--chat-accent-2);
+  box-shadow: inset 0 -2px 0 var(--chat-accent-2);
+}
+
+.code-panel-tab-label {
+  white-space: nowrap;
+}
+
+.code-panel-tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1;
+  color: inherit;
+  opacity: 0.6;
+}
+
+.code-panel-tab-close:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.code-panel-tabstrip-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 0 6px;
+}
+
+.code-panel-split-toggle {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: none;
+  background: none;
+  color: var(--chat-code-chrome-fg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.code-panel-split-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--chat-accent);
+}
+
+.code-panel-copy {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: none;
+  color: var(--chat-code-chrome-fg);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.code-panel-copy:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--chat-accent);
+}
+
+.code-panel-editor-panes {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.code-panel-editor-panes > .code-panel-editor-wrap,
+.code-panel-editor-panes > .code-panel-empty-state {
+  flex: 1;
+  min-width: 0;
+}
+
+.code-panel-editor-panes-split > .code-panel-editor-wrap:first-child {
+  flex: 1 1 50%;
+}
+
+.code-panel-vertical-divider {
+  width: 1px;
+  flex-shrink: 0;
+  background: var(--chat-code-border);
+}
+
+.code-panel-editor-wrap {
+  min-height: 0;
+}
+
+.code-panel-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 24px;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--chat-ink-soft);
+}
+
+.code-panel-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 12.5px;
+  color: var(--chat-ink-soft);
+}
+
+/* ==========================================================================
+   Mobile: panel takes over the full screen instead of docking beside chat
+   (there's no room to show both at a readable width).
+   ========================================================================== */
+
+@media (max-width: 720px) {
+  .code-panel {
+    position: fixed;
+    inset: 0;
+    width: 100% !important;
+    z-index: 50;
+    border-left: none;
+  }
+
+  .code-panel-resize-handle {
+    display: none;
+  }
+
+  .code-panel-editor-panes-split {
+    flex-direction: column;
+  }
+
+  .code-panel-vertical-divider {
+    width: 100%;
+    height: 1px;
+  }
+}

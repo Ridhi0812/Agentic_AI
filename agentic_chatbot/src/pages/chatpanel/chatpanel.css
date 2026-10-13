@@ -1,0 +1,153 @@
+/* ==========================================================================
+   Shell
+
+   Theme tokens (--chat-*, fonts) live in global.css, declared on
+   .layout-shell -- .chat-screen is always rendered as its descendant
+   (see App.jsx), so it inherits every --chat-* value via normal CSS
+   cascade without needing to redeclare any of them here.
+   ========================================================================== */
+
+.chat-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+  position: relative; /* anchors the lightbox overlay */
+  background: var(--chat-bg);
+  color: var(--chat-ink);
+  font-family: var(--font-ui);
+  border: 1px solid var(--chat-border);
+  border-radius: 24px;
+  overflow: hidden;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+/* .chat-screen.chat-theme-dark intentionally has no rules here -- dark
+   mode's --chat-* values come entirely from .layout-shell.chat-theme-dark
+   in global.css. The class is still applied to .chat-screen's own
+   className (see chat_panel.jsx) only so any *future* .chat-screen-only
+   rule that needs a dark-mode variant has a hook to key off, without
+   requiring every token to be redeclared here too. */
+
+/* ==========================================================================
+   Chat column: messages + composer, filling the space below the header
+   and context bar inside .chat-screen. CodePanel is not nested here --
+   it's an independent workspace that sits beside .chat-screen entirely
+   (see App.jsx).
+   ========================================================================== */
+
+.chat-column {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ==========================================================================
+   Context bar (pinned, never scrolls)
+   ========================================================================== */
+
+.chat-context-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 10px;
+  font-size: 10px;
+  color: var(--chat-ink-soft);
+  border-bottom: 1px solid var(--chat-border);
+  background: var(--chat-surface);
+  flex-shrink: 0;
+}
+
+.chat-context-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.chat-context-count {
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   Lightbox
+   ========================================================================== */
+
+.chat-lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  cursor: zoom-out;
+}
+
+.chat-lightbox img {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 8px;
+  cursor: default;
+}
+
+.chat-lightbox-close {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ==========================================================================
+   Scrollbar + focus (shared across all sub-components)
+   ========================================================================== */
+
+.chat-messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-messages::-webkit-scrollbar-thumb {
+  background: var(--chat-border);
+  border-radius: 999px;
+}
+
+.chat-send-btn:focus-visible,
+.chat-attach-btn:focus-visible,
+.chat-model-trigger:focus-visible,
+.chat-model-option:focus-visible,
+.chat-theme-toggle:focus-visible,
+.chat-editor-toggle:focus-visible,
+.chat-code-preview-card:focus-visible,
+.code-panel-close:focus-visible,
+.chat-lightbox-close:focus-visible {
+  outline: 2px solid var(--chat-accent);
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   Mobile
+   ========================================================================== */
+
+@media (max-width: 480px) {
+  .chat-screen {
+    border-radius: 0;
+  }
+  .chat-bubble {
+    max-width: 84%;
+  }
+}

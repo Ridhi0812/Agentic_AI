@@ -1,0 +1,337 @@
+/* ==========================================================================
+   Input area (pinned, never scrolls)
+
+   Relies on --chat-* custom properties defined in chat_panel.css's
+   .chat-screen scope. This file is only ever rendered inside .chat-screen,
+   so those variables are in scope via normal CSS cascade.
+   ========================================================================== */
+
+.chat-input-area {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  padding: 6px 10px 8px;
+  gap: 5px;
+}
+
+/* Pending attachments — preview strip above the composer */
+
+.chat-attach-preview-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chat-attach-preview {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+}
+
+.chat-attach-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 10px;
+  display: block;
+  border: 1px solid var(--chat-border);
+  cursor: zoom-in;
+}
+
+.chat-attach-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: var(--chat-ink);
+  color: var(--chat-surface);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+/* ==========================================================================
+   Composer — one bordered card holding the textarea and, below it, the
+   attach / model / token / send controls, similar to Claude.ai's input.
+   ========================================================================== */
+
+.chat-composer {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--chat-border);
+  border-radius: 20px;
+  background: var(--chat-surface);
+  box-shadow: var(--chat-shadow-soft);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.chat-composer:focus-within {
+  box-shadow: 0 8px 28px var(--chat-focus-glow);
+}
+
+.chat-composer-textarea {
+  resize: none;
+  border: none;
+  background: transparent;
+  padding: 11px 14px 4px;
+  font-family: inherit;
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: var(--chat-ink);
+  max-height: 120px;
+  outline: none;
+}
+
+.chat-composer-textarea:focus,
+.chat-composer-textarea:focus-visible {
+  outline: none;
+}
+
+.chat-composer-textarea::placeholder {
+  color: var(--chat-ink-soft);
+}
+
+.chat-composer-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px 8px;
+}
+
+.chat-composer-controls-left {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.chat-attach-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  border: none;
+  background: none;
+  color: var(--chat-ink-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chat-attach-btn:hover:not(:disabled) {
+  background: var(--chat-surface-alt);
+  color: var(--chat-accent);
+}
+
+.chat-attach-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Model picker, now living inside the composer's control row */
+
+.chat-model-picker {
+  position: relative;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.chat-model-trigger {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-surface-alt);
+  color: var(--chat-ink);
+  max-width: 150px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.chat-model-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chat-model-trigger:hover:not(:disabled) {
+  border-color: var(--chat-accent);
+  box-shadow: 0 4px 14px var(--chat-focus-glow);
+}
+
+.chat-model-trigger-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-model-chevron {
+  flex-shrink: 0;
+  color: var(--chat-ink-soft);
+  transition: transform 0.15s ease;
+}
+
+.chat-model-chevron-open {
+  transform: rotate(180deg);
+}
+
+.chat-model-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+  min-width: 220px;
+  max-width: 280px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border-radius: 14px;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-surface);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+}
+
+.chat-model-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  background: none;
+  border-radius: 9px;
+  font-family: inherit;
+  color: var(--chat-ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.chat-model-option:hover {
+  background: var(--chat-surface-alt);
+}
+
+/* Clearly separate the active model from the rest of the list, not just
+   via the checkmark: a tinted background and accent border. */
+.chat-model-option-selected {
+  background: var(--chat-inline-code-bg);
+  border-color: var(--chat-inline-code-border);
+}
+
+.chat-model-option-selected:hover {
+  background: var(--chat-inline-code-bg);
+}
+
+.chat-model-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.chat-model-option-name {
+  font-size: 13.5px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-model-option-selected .chat-model-option-name {
+  color: var(--chat-accent);
+}
+
+.chat-model-option-desc {
+  font-size: 12px;
+  color: var(--chat-ink-soft);
+}
+
+.chat-model-check {
+  flex-shrink: 0;
+  color: var(--chat-accent);
+}
+
+.chat-token-slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  color: var(--chat-ink-soft);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.chat-token-slider-wrap label {
+  min-width: 2ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-token-slider {
+  width: 60px;
+  accent-color: var(--chat-accent);
+}
+
+.chat-send-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(135deg, var(--chat-accent), var(--chat-accent-2));
+  color: var(--chat-accent-ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+  box-shadow: 0 3px 10px var(--chat-accent-glow);
+}
+
+.chat-send-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 5px 14px var(--chat-accent-glow);
+}
+
+.chat-send-btn:disabled {
+  opacity: 0.35;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.chat-disclaimer {
+  margin: 0;
+  padding: 0 4px;
+  font-size: 9px;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--chat-ink-soft);
+}
+
+@media (max-width: 480px) {
+  .chat-composer-controls {
+    flex-wrap: wrap;
+  }
+  .chat-model-trigger {
+    max-width: 120px;
+  }
+  .chat-token-slider {
+    width: 56px;
+  }
+}

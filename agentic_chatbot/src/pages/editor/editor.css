@@ -1,0 +1,32 @@
+/* ==========================================================================
+   Raw code editor surface (Monaco or Ace, switchable via editorType)
+
+   This file only styles the editor instance itself -- it has no opinion
+   about headers, copy buttons, or collapse/expand chrome, since those
+   live wherever this editor is embedded (chat_panel/CodePanel.jsx for
+   the full editor, chat_panel/ChatMessages.jsx for the collapsed
+   preview card).
+   ========================================================================== */
+
+/* Ace renders its own inner div/canvas structure -- make sure it actually
+   fills the width/height react-ace is told to use, and drop its default
+   focus outline/border since the embedding container provides the frame. */
+.chat-code-editor-host {
+  width: 100%;
+  height: 100%;
+}
+
+.chat-code-editor-host .ace_editor {
+  border: none !important;
+}
+
+.chat-code-editor-host .ace_editor.ace_focus {
+  box-shadow: none !important;
+}
+
+/* Ace's gutter (line-number column) defaults to a color unrelated to our
+   theme tokens; tint it to match the code header for visual consistency. */
+.chat-code-editor-host .ace_gutter {
+  background: var(--chat-code-header-bg) !important;
+  color: var(--chat-code-chrome-fg-muted) !important;
+}
