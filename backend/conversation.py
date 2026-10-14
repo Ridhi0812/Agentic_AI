@@ -570,10 +570,6 @@ async def models(request: Request):
     return {
         "models": [
             "gemma4:31b",
-            "gemma4:12b",
-            "gemma4:e4b",
-            "llama3.1:latest",
-            "qwen2.5:3b",
-            "llama3.2:3b",
         ]
-    }
+    }wq
+    :wq
