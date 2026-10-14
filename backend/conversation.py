@@ -23,12 +23,10 @@ client = AsyncClient(
 
 MAX_LOOPS = 8
 
-# Restrict file operations to the backend workspace.
 WORKSPACE = Path.cwd().resolve()
 
 
 def ensure_api_key():
-    """Check that the Ollama Cloud API key is configured."""
     if not OLLAMA_API_KEY:
         raise RuntimeError(
             "OLLAMA_API_KEY is missing. "
@@ -85,10 +83,7 @@ class Tools:
             "type": "function",
             "function": {
                 "name": "read_file",
-                "description": (
-                    "Read a supported file such as TXT, PY, JSON, "
-                    "CSV, XLSX or PDF."
-                ),
+                "description": "Read a supported file such as TXT, PY, JSON, CSV, XLSX or PDF.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -151,19 +146,13 @@ class Tools:
 
     def _safe_path(self, path):
         target = (WORKSPACE / path).resolve()
-
         if not target.is_relative_to(WORKSPACE):
-            raise ValueError(
-                "Access outside the workspace is not allowed."
-            )
-
+            raise ValueError("Access outside the workspace is not allowed.")
         return target
 
     async def dispatch(self, name, args):
         if not isinstance(args, dict):
-            raise ValueError(
-                "Tool arguments must be a dictionary."
-            )
+            raise ValueError("Tool arguments must be a dictionary.")
 
         methods = {
             "list_directory": self._list_directory,
@@ -184,166 +173,94 @@ class Tools:
 
     async def _list_directory(self, path):
         directory = self._safe_path(path)
-
         if not directory.is_dir():
             raise ValueError("Directory does not exist.")
-
         items = []
-
         for item in sorted(directory.iterdir()):
             items.append({
                 "name": item.name,
                 "type": "directory" if item.is_dir() else "file"
             })
-
         return json.dumps(items, ensure_ascii=False)
 
     async def _find_files(self, pattern, path):
         directory = self._safe_path(path)
-
         if not directory.is_dir():
             raise ValueError("Directory does not exist.")
-
         results = []
-
         for item in directory.rglob(pattern):
             try:
                 item.resolve().relative_to(WORKSPACE)
             except ValueError:
                 continue
-
-            results.append(
-                str(item.relative_to(WORKSPACE))
-            )
-
+            results.append(str(item.relative_to(WORKSPACE)))
             if len(results) >= 500:
                 break
-
         return json.dumps(results, ensure_ascii=False)
 
     async def _read_file(self, path):
         file_path = self._safe_path(path)
-
         if not file_path.is_file():
             raise ValueError("File does not exist.")
-
         suffix = file_path.suffix.lower()
-
         text_extensions = {
             ".txt", ".md", ".py", ".json",
             ".yaml", ".yml", ".html", ".css",
             ".js", ".ts", ".jsx", ".tsx", ".csv",
             ".xml", ".ini", ".log"
         }
-
         if suffix in text_extensions:
             return file_path.read_text(encoding="utf-8")
-
         if suffix == ".pdf":
             import pdfplumber
-
             with pdfplumber.open(file_path) as pdf:
-                return "\n".join(
-                    page.extract_text() or ""
-                    for page in pdf.pages
-                )
-
+                return "\n".join(page.extract_text() or "" for page in pdf.pages)
         if suffix == ".xlsx":
             from openpyxl import load_workbook
-
-            workbook = load_workbook(
-                file_path,
-                read_only=True,
-                data_only=True
-            )
-
+            workbook = load_workbook(file_path, read_only=True, data_only=True)
             try:
                 output = {}
-
                 for sheet in workbook.worksheets:
                     output[sheet.title] = [
-                        list(row)
-                        for row in sheet.iter_rows(
-                            values_only=True
-                        )
+                        list(row) for row in sheet.iter_rows(values_only=True)
                     ]
-
-                return json.dumps(
-                    output,
-                    default=str,
-                    ensure_ascii=False
-                )
+                return json.dumps(output, default=str, ensure_ascii=False)
             finally:
                 workbook.close()
-
         raise ValueError(f"Unsupported file type: {suffix}")
 
     async def _write_file(self, path, content):
         file_path = self._safe_path(path)
-
         allowed_extensions = {
             ".txt", ".md", ".py", ".json",
             ".yaml", ".yml", ".html", ".css",
             ".js", ".ts", ".jsx", ".tsx",
             ".csv", ".xml", ".ini", ".log"
         }
-
         if file_path.suffix.lower() not in allowed_extensions:
-            raise ValueError(
-                "Writing is limited to supported text files."
-            )
-
-        file_path.parent.mkdir(
-            parents=True,
-            exist_ok=True
-        )
-
-        file_path.write_text(
-            content,
-            encoding="utf-8"
-        )
-
-        return (
-            "File written successfully: "
-            f"{file_path.relative_to(WORKSPACE)}"
-        )
+            raise ValueError("Writing is limited to supported text files.")
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(content, encoding="utf-8")
+        return f"File written successfully: {file_path.relative_to(WORKSPACE)}"
 
     async def _edit_file(self, path, old_text, new_text):
         file_path = self._safe_path(path)
-
         if not file_path.is_file():
             raise ValueError("File does not exist.")
-
         allowed_extensions = {
             ".txt", ".md", ".py", ".json",
             ".yaml", ".yml", ".html", ".css",
             ".js", ".ts", ".jsx", ".tsx",
             ".csv", ".xml", ".ini", ".log"
         }
-
         if file_path.suffix.lower() not in allowed_extensions:
-            raise ValueError(
-                "Editing is limited to supported text files."
-            )
-
-        content = file_path.read_text(
-            encoding="utf-8"
-        )
-
+            raise ValueError("Editing is limited to supported text files.")
+        content = file_path.read_text(encoding="utf-8")
         if old_text not in content:
             return "Edit failed: old_text was not found in the file."
-
         updated = content.replace(old_text, new_text)
-
-        file_path.write_text(
-            updated,
-            encoding="utf-8"
-        )
-
-        return (
-            "File edited successfully: "
-            f"{file_path.relative_to(WORKSPACE)}"
-        )
+        file_path.write_text(updated, encoding="utf-8")
+        return f"File edited successfully: {file_path.relative_to(WORKSPACE)}"
 
 
 _tools = Tools()
@@ -379,22 +296,21 @@ async def formator(input_data, model_name):
         {
             "role": "system",
             "content": """
-            1.you are a input to output formator who get the input data and returns into the reformated html output
-             with following condition 
-             output format :
-                            1.the output should be formatted in html tags 
-                                1.1. like heading , paragraph or tables etc 
-                                1.2. there are few additional tags i.e.
-                                    1.2.1 <python> </python> for python code
-                                    1.2.2 <react> </react> for react code 
-                                    1.2.3. and so on code tags for any code in the output
-                                    1.2.4. you can use these tags for the mathematical solutions or solution or part of message which should /can be copied
-                                1.3. instead of dollar sign or $ sign you should use html tags for all practical purposes
-                                1.4. there is no maths tag here
-                        
-                            2.If input already contains html code for visualization then pack in the output
-                            3.the output should be only reformated data there should be not markdown or suggestions etc
-                            4.Dont insert color or other css tags etc in codes tag  
+1. you are a input to output formator who get the input data and returns into the reformated html output
+   with following condition
+   output format:
+        1. the output should be formatted in html tags
+            1.1. like heading, paragraph or tables etc
+            1.2. there are few additional tags i.e.
+                1.2.1 <python> </python> for python code
+                1.2.2 <react> </react> for react code
+                1.2.3. and so on code tags for any code in the output
+                1.2.4. you can use these tags for the mathematical solutions or solution or part of message which should/can be copied
+            1.3. instead of dollar sign or $ sign you should use html tags for all practical purposes
+            1.4. there is no maths tag here
+        2. If input already contains html code for visualization then pack in the output
+        3. the output should be only reformated data there should be no markdown or suggestions etc
+        4. Dont insert color or other css tags etc in codes tag
 """
         },
         {
@@ -413,7 +329,6 @@ async def formator(input_data, model_name):
 
     if answer.startswith("```"):
         answer = answer.replace("```html", "", 1)
-
         if answer.endswith("```"):
             answer = answer[:-3]
 
@@ -447,9 +362,7 @@ async def message(model_name, tokens, messages):
             model=model_name,
             messages=ollama_messages,
             tools=tools,
-            options={
-                "num_predict": tokens
-            }
+            options={"num_predict": tokens}
         )
 
         assistant_message = response.message
@@ -465,19 +378,11 @@ async def message(model_name, tokens, messages):
             tool_name = tool_call.function.name
             tool_args = tool_call.function.arguments
 
-            logs.append(
-                f"Loop {loop_count}: "
-                f"{tool_name}({tool_args})"
-            )
+            logs.append(f"Loop {loop_count}: {tool_name}({tool_args})")
 
-            result = await _tools.dispatch(
-                tool_name,
-                tool_args
-            )
+            result = await _tools.dispatch(tool_name, tool_args)
 
-            logs.append(
-                f"Result: {result[:500]}"
-            )
+            logs.append(f"Result: {result[:500]}")
 
             ollama_messages.append({
                 "role": "tool",
@@ -517,9 +422,7 @@ async def chatbot(request: Request):
 
         messages = body.get("messages", [])
         model_name = body.get("model", "").strip()
-        tokens = body.get(
-            "options", {}
-        ).get("num_predict", 2048)
+        tokens = body.get("options", {}).get("num_predict", 2048)
 
         if not model_name:
             raise HTTPException(
@@ -536,11 +439,7 @@ async def chatbot(request: Request):
         print(f"Model: {model_name}")
         print(f"Tokens: {tokens}")
 
-        answer = await message(
-            model_name,
-            tokens,
-            messages
-        )
+        answer = await message(model_name, tokens, messages)
 
         return {
             "message": {
@@ -554,7 +453,6 @@ async def chatbot(request: Request):
 
     except Exception as exc:
         print(f"Chat error: {exc}")
-
         raise HTTPException(
             status_code=502,
             detail=f"Chat request failed: {str(exc)}"
@@ -562,7 +460,7 @@ async def chatbot(request: Request):
 
 
 # =========================================================
-# 6. FASTAPI MODEL LIST ROUTE  ← UPDATED
+# 6. FASTAPI MODEL LIST ROUTE
 # =========================================================
 
 @router.get("/model_list")
@@ -571,5 +469,4 @@ async def models(request: Request):
         "models": [
             "gemma4:31b-cloud",
         ]
-    }wq
-    :wq
+    }
