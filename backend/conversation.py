@@ -569,7 +569,7 @@ async def chatbot(request: Request):
 async def models(request: Request):
     return {
         "models": [
-            "gemma4:31b",
+            "gemma4:31b-cloud",
         ]
     }wq
     :wq
