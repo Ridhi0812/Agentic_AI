@@ -1,4 +1,3 @@
-
 import os
 import json
 from pathlib import Path
@@ -149,10 +148,6 @@ class Tools:
             }
         }
     ]
-
-    # -----------------------------------------------------
-    # TOOL EXECUTION
-    # -----------------------------------------------------
 
     def _safe_path(self, path):
         target = (WORKSPACE / path).resolve()
@@ -449,12 +444,10 @@ async def message(model_name, tokens, messages):
         assistant_message = response.message
         tool_calls = assistant_message.tool_calls or []
 
-        # No tool calls means the model has completed its answer.
         if not tool_calls:
             answer = assistant_message.content or ""
             break
 
-        # Preserve the assistant's tool-call message.
         ollama_messages.append(assistant_message)
 
         for tool_call in tool_calls:
@@ -475,7 +468,6 @@ async def message(model_name, tokens, messages):
                 f"Result: {result[:500]}"
             )
 
-            # Send the tool result back to the model.
             ollama_messages.append({
                 "role": "tool",
                 "name": tool_name,
@@ -559,34 +551,18 @@ async def chatbot(request: Request):
 
 
 # =========================================================
-# 6. FASTAPI MODEL LIST ROUTE
+# 6. FASTAPI MODEL LIST ROUTE  ← UPDATED
 # =========================================================
 
 @router.get("/model_list")
 async def models(request: Request):
-    try:
-        ensure_api_key()
-
-        model_response = await client.list()
-
-        model_names = [
-            getattr(item, "model", None)
-            or getattr(item, "name", None)
-            for item in model_response.models
+    return {
+        "models": [
+            "gemma4:31b",
+            "gemma4:12b",
+            "gemma4:e4b",
+            "llama3.1:latest",
+            "qwen2.5:3b",
+            "llama3.2:3b",
         ]
-
-        model_names = [
-            name for name in model_names if name
-        ]
-
-        return {
-            "models": model_names
-        }
-
-    except Exception as exc:
-        print(f"Model list error: {exc}")
-
-        raise HTTPException(
-            status_code=502,
-            detail=f"Could not fetch Ollama Cloud models: {str(exc)}"
-        ) from exc
+    }

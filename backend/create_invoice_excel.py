@@ -1,6 +1,5 @@
 import pandas as pd
 
-# Data extracted from the provided invoice images
 data = {
     'Invoice No': ['INV-12345-1', '123456'],
     'Date': ['26 June 2022', '12/9/2019'],
