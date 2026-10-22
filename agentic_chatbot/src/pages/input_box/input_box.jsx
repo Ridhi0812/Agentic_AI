@@ -1,12 +1,59 @@
 import "./input_box.css";
 
+// CHANGED: file picker ab chatpanel.jsx ki DOC_EXTENSIONS list ke barabar hai.
+// ".doc" hata diya, kyunki backend sirf .docx padh sakta hai.
+const ACCEPT_TYPES = [
+  "image/*",
+  ".pdf",
+  ".docx",
+  ".xlsx",
+  ".xls",
+  ".csv",
+  ".txt",
+  ".md",
+  ".json",
+  ".py",
+  ".js",
+  ".jsx",
+  ".ts",
+  ".tsx",
+  ".html",
+  ".css",
+  ".xml",
+  ".yaml",
+  ".yml",
+  ".ini",
+  ".log",
+].join(",");
+
+// CHANGED: file ke type ke hisaab se icon.
+const getDocIcon = (name = "") => {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".pdf")) return "📕";
+  if (/\.(xlsx?|csv)$/.test(lower)) return "📊";
+  if (/\.docx?$/.test(lower)) return "📘";
+  return "📄";
+};
+
+// CHANGED: bytes ko KB / MB mein badalta hai.
+const formatSize = (size) => {
+  if (typeof size !== "number") return "";
+  if (size < 1024 * 1024) {
+    return `${Math.max(1, Math.round(size / 1024))} KB`;
+  }
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+};
+
 /**
- * Bottom composer: pending image attachments, the textarea, and the
- * controls row (attach, model picker, token slider, send). All state
- * (draft text, attachedImages, models, selectedModel, maxTokens, the
- * model popover open/closed) lives in the parent ChatPanel and is passed
- * down as props/refs -- this component is purely presentational plus
- * the outside-click-to-close wiring for its own model popover ref.
+ * Bottom composer: pending image and document attachments,
+ * textarea, model picker, token slider, and send controls.
+ *
+ * Attachment state and upload/send logic are managed by the
+ * parent ChatPanel component and passed down through props.
+ *
+ * CHANGED: attachments are now two separate lists --
+ *   attachedImages: [{ id, file, previewUrl, base64 }]
+ *   attachedDocs:   [{ id, name, size, base64 }]
  */
 export default function InputBox({
   draft,
@@ -15,9 +62,11 @@ export default function InputBox({
   onPaste,
   textareaRef,
 
-  attachedImages,
+  attachedImages = [],
+  attachedDocs = [],
   onAttachClick,
   onRemoveImage,
+  onRemoveDoc,
   onOpenLightbox,
   fileInputRef,
   onFilesSelected,
@@ -39,22 +88,64 @@ export default function InputBox({
   isBusy,
   onSend,
 }) {
+  const hasAttachments =
+    attachedImages.length > 0 || attachedDocs.length > 0;
+
   return (
     <div className="chat-input-area">
-      {attachedImages.length > 0 && (
+      {/* Attachment previews */}
+      {hasAttachments && (
         <div className="chat-attach-preview-row">
+          {/* Images: thumbnail, click to open fullscreen */}
           {attachedImages.map((img) => (
             <div className="chat-attach-preview" key={img.id}>
               <img
                 src={img.previewUrl}
-                alt="Attachment preview"
-                onClick={() => onOpenLightbox(img.previewUrl)}
+                alt={img.file?.name || "Attached image"}
+                onClick={() =>
+                  img.previewUrl && onOpenLightbox(img.previewUrl)
+                }
               />
+
               <button
                 type="button"
                 className="chat-attach-remove"
                 onClick={() => onRemoveImage(img.id)}
-                aria-label="Remove image"
+                disabled={isBusy}
+                aria-label={`Remove ${img.file?.name || "image"}`}
+                title="Remove attachment"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+
+          {/* CHANGED: Documents: icon + name + size chip */}
+          {attachedDocs.map((doc) => (
+            <div className="chat-attach-preview" key={doc.id}>
+              <div className="chat-file-preview">
+                <span className="chat-file-icon">
+                  {getDocIcon(doc.name)}
+                </span>
+
+                <span className="chat-file-name" title={doc.name}>
+                  {doc.name}
+                </span>
+
+                {typeof doc.size === "number" && (
+                  <span className="chat-file-size">
+                    {formatSize(doc.size)}
+                  </span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                className="chat-attach-remove"
+                onClick={() => onRemoveDoc(doc.id)}
+                disabled={isBusy}
+                aria-label={`Remove ${doc.name}`}
+                title="Remove attachment"
               >
                 ×
               </button>
@@ -67,7 +158,7 @@ export default function InputBox({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept={ACCEPT_TYPES}
           multiple
           hidden
           onChange={onFilesSelected}
@@ -91,9 +182,15 @@ export default function InputBox({
               className="chat-attach-btn"
               onClick={onAttachClick}
               disabled={isBusy}
-              aria-label="Attach image"
+              aria-label="Attach images or documents"
+              title="Attach images or documents"
             >
-              <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                width="16"
+                height="16"
+              >
                 <path
                   d="M17 8.5l-7.4 7.4a3 3 0 104.2 4.2L21 13"
                   stroke="currentColor"
@@ -116,7 +213,9 @@ export default function InputBox({
                 type="button"
                 className="chat-model-trigger"
                 onClick={onToggleModelMenu}
-                disabled={isLoadingModels || isBusy || models.length === 0}
+                disabled={
+                  isLoadingModels || isBusy || models.length === 0
+                }
                 aria-haspopup="listbox"
                 aria-expanded={isModelMenuOpen}
               >
@@ -127,6 +226,7 @@ export default function InputBox({
                     ? "No models available"
                     : selectedModel}
                 </span>
+
                 <svg
                   className={`chat-model-chevron ${
                     isModelMenuOpen ? "chat-model-chevron-open" : ""
@@ -148,24 +248,34 @@ export default function InputBox({
 
               {isModelMenuOpen && models.length > 0 && (
                 <ul className="chat-model-menu" role="listbox">
-                  {models.map((m) => (
-                    <li key={m} role="option" aria-selected={m === selectedModel}>
+                  {models.map((model) => (
+                    <li
+                      key={model}
+                      role="option"
+                      aria-selected={model === selectedModel}
+                    >
                       <button
                         type="button"
                         className={`chat-model-option ${
-                          m === selectedModel ? "chat-model-option-selected" : ""
+                          model === selectedModel
+                            ? "chat-model-option-selected"
+                            : ""
                         }`}
-                        onClick={() => onSelectModel(m)}
+                        onClick={() => onSelectModel(model)}
                       >
                         <span className="chat-model-option-text">
-                          <span className="chat-model-option-name">{m}</span>
-                          {modelDescriptions[m] && (
+                          <span className="chat-model-option-name">
+                            {model}
+                          </span>
+
+                          {modelDescriptions[model] && (
                             <span className="chat-model-option-desc">
-                              {modelDescriptions[m]}
+                              {modelDescriptions[model]}
                             </span>
                           )}
                         </span>
-                        {m === selectedModel && (
+
+                        {model === selectedModel && (
                           <svg
                             className="chat-model-check"
                             viewBox="0 0 24 24"
@@ -191,6 +301,7 @@ export default function InputBox({
 
             <div className="chat-token-slider-wrap">
               <label htmlFor="chat-max-tokens">{maxTokens}</label>
+
               <input
                 id="chat-max-tokens"
                 type="range"
@@ -199,7 +310,9 @@ export default function InputBox({
                 max={maxTokensLimit}
                 step={64}
                 value={maxTokens}
-                onChange={(e) => onMaxTokensChange(Number(e.target.value))}
+                onChange={(event) =>
+                  onMaxTokensChange(Number(event.target.value))
+                }
                 disabled={isBusy}
                 aria-label={`Max tokens: ${maxTokens}`}
                 title={`Max tokens: ${maxTokens}`}
@@ -207,13 +320,21 @@ export default function InputBox({
             </div>
           </div>
 
+          {/* CHANGED: documents bhi count hote hain, taaki sirf file
+              attach karke bhi Send button enable ho jaye. */}
           <button
+            type="button"
             className="chat-send-btn"
             onClick={onSend}
-            disabled={(!draft.trim() && attachedImages.length === 0) || isBusy}
+            disabled={(!draft.trim() && !hasAttachments) || isBusy}
             aria-label="Send message"
           >
-            <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              width="16"
+              height="16"
+            >
               <path
                 d="M4 12L20 4L14 20L11 13L4 12Z"
                 stroke="currentColor"

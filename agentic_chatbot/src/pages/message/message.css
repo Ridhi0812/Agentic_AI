@@ -1,11 +1,3 @@
-/* ==========================================================================
-   Message list (the only element that scrolls)
-
-   Relies on --chat-* custom properties defined in chat_panel.css's
-   .chat-screen scope. This file is only ever rendered inside .chat-screen,
-   so those variables are in scope via normal CSS cascade.
-   ========================================================================== */
-
 .chat-context-checkbox {
   appearance: none;
   -webkit-appearance: none;
@@ -470,4 +462,39 @@
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 500;
+}
+
+.chat-message-docs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.chat-message-doc {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  font-size: 13px;
+}
+
+.chat-message-doc-icon {
+  flex-shrink: 0;
+}
+
+.chat-message-doc-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-message-doc-size {
+  flex-shrink: 0;
+  opacity: 0.75;
+  font-size: 12px;
 }

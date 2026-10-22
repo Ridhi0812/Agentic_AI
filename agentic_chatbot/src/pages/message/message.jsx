@@ -65,6 +65,15 @@ const KNOWN_HTML_TAGS = new Set([
   // on foreignObject smuggling.
   "title", "use", "symbol", "mask", "clippath", "pattern", "marker",
   "image", "foreignobject",
+  // CHANGED: more ordinary text-level and semantic HTML tags. If the
+  // formatter model uses any of these in a normal explanation, they must
+  // NOT be misread as a "language" tag and turned into a code editor
+  // block -- that was one cause of normal text showing up as code.
+  // (<script> is still deliberately NOT listed, see note above.)
+  "main", "article", "header", "footer", "nav", "aside", "address",
+  "small", "mark", "sub", "sup", "s", "del", "ins", "kbd", "samp", "var",
+  "abbr", "cite", "q", "time", "dl", "dt", "dd", "caption", "colgroup",
+  "col", "tfoot", "details", "summary", "label", "center",
 ]);
 
 // DOMPurify config used for assistant HTML. Three things matter here,
@@ -200,6 +209,24 @@ export function rebuildTextWithEditedCode(text, blockIndex, newCode) {
     .join("");
 }
 
+// CHANGED: icon + size helpers for attached-document chips shown inside
+// a user's chat bubble (same icons as the composer in input_box.jsx).
+function getDocIcon(name = "") {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".pdf")) return "📕";
+  if (/\.(xlsx?|csv)$/.test(lower)) return "📊";
+  if (/\.docx?$/.test(lower)) return "📘";
+  return "📄";
+}
+
+function formatDocSize(size) {
+  if (typeof size !== "number") return "";
+  if (size < 1024 * 1024) {
+    return `${Math.max(1, Math.round(size / 1024))} KB`;
+  }
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 // A single code block's representation inside a chat bubble. Short blocks
 // render as a small always-editable inline editor (same as before). Long
 // blocks (> COLLAPSE_THRESHOLD_LINES) render as a static, read-only,
@@ -321,6 +348,9 @@ function HtmlContent({ text, editorType, messageId, onCodeChange, onOpenPanel })
  * open the docked CodePanel via onOpenPanel; edits to any block flow back
  * up through onCodeChange, which the parent ChatPanel uses to permanently
  * rewrite the owning message's stored text.
+ *
+ * CHANGED: a user's bubble now also shows chips for any attached
+ * documents (msg.documents = [{ id, name, size }]) above the message text.
  */
 export default function ChatMessages({
   messages,
@@ -383,6 +413,31 @@ export default function ChatMessages({
                         className="chat-image-thumb"
                         onClick={() => onOpenLightbox(src)}
                       />
+                    ))}
+                  </div>
+                )}
+
+                {/* CHANGED: attached documents (PDF, Word, Excel, ...) */}
+                {msg.documents && msg.documents.length > 0 && (
+                  <div className="chat-message-docs">
+                    {msg.documents.map((doc, idx) => (
+                      <div
+                        key={doc.id || idx}
+                        className="chat-message-doc"
+                        title={doc.name}
+                      >
+                        <span className="chat-message-doc-icon">
+                          {getDocIcon(doc.name)}
+                        </span>
+                        <span className="chat-message-doc-name">
+                          {doc.name}
+                        </span>
+                        {typeof doc.size === "number" && (
+                          <span className="chat-message-doc-size">
+                            {formatDocSize(doc.size)}
+                          </span>
+                        )}
+                      </div>
                     ))}
                   </div>
                 )}

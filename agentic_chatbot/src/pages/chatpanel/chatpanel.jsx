@@ -20,6 +20,19 @@ import {
 
 const MODEL_STORAGE_KEY = "chat_selected_model";
 
+// CHANGED: documents (PDF, Word, Excel, CSV, text, code) ke liye limits.
+// Ye backend (conversation.py) ki limits se match karti hain.
+const DOC_EXTENSIONS = [
+  ".pdf", ".docx", ".xlsx", ".xls", ".csv", ".txt", ".md", ".json",
+  ".py", ".js", ".jsx", ".ts", ".tsx", ".html", ".css", ".xml",
+  ".yaml", ".yml", ".ini", ".log",
+];
+const MAX_DOC_BYTES = 5 * 1024 * 1024; // 5 MB per file
+const MAX_DOCS = 5;
+
+const isDocFile = (file) =>
+  DOC_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext));
+
 const DEFAULT_GREETING = {
   id: "m1",
   role: "assistant",
@@ -40,10 +53,16 @@ const DEFAULT_GREETING = {
  * one chat is "active" (rendered, and the one new messages get appended
  * to) at a time -- see ChatSwitcher for how the user moves between them.
  * Sending a message still works exactly the same way as before: on every
- * turn, the currently-active chat's "included" messages go straight to a
- * local Ollama server's /api/chat endpoint -- see buildOllamaMessages()
- * below for exactly how they're turned into the { role, content } shape
- * Ollama expects.
+ * turn, the currently-active chat's "included" messages go to the
+ * backend's /chat endpoint -- see buildOllamaMessages() below for exactly
+ * how they're turned into the { role, content } shape Ollama expects.
+ *
+ * CHANGED: the composer now accepts two kinds of attachments:
+ *   - images     -> sent inside the message's `images` field (vision)
+ *   - documents  -> sent in the top-level `documents` field of the
+ *                   payload as [{ name, base64 }], which is exactly
+ *                   what conversation.py's prepare_document_context()
+ *                   reads and extracts text from.
  */
 const ChatPanel = forwardRef(function ChatPanel({
   onOpenCodeBlock,
@@ -115,6 +134,9 @@ const ChatPanel = forwardRef(function ChatPanel({
   // Each entry: { id, file, previewUrl (data: URI), base64 }
   const [attachedImages, setAttachedImages] = useState([]);
 
+  // CHANGED: attached documents. Each entry: { id, name, size, base64 }
+  const [attachedDocs, setAttachedDocs] = useState([]);
+
   const [models, setModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState("");
   const [isLoadingModels, setIsLoadingModels] = useState(true);
@@ -150,6 +172,7 @@ const ChatPanel = forwardRef(function ChatPanel({
     setMessages(loadChatMessages(id) ?? [DEFAULT_GREETING]);
     setDraft("");
     setAttachedImages([]);
+    setAttachedDocs([]); // CHANGED
     setIsThinking(false);
     setActiveChatId(id);
   };
@@ -161,7 +184,7 @@ const ChatPanel = forwardRef(function ChatPanel({
   // is never attempted with a (chatId, messages) pair that don't
   // actually belong together. imagePreviews are data: URIs (not blob:
   // object URLs), so the messages array is always safe to
-  // JSON.stringify as-is -- see addImageFiles below for why.
+  // JSON.stringify as-is -- see addFiles below for why.
   useEffect(() => {
     if (loadedChatIdRef.current !== activeChatId) return;
     saveChatMessages(activeChatId, messages);
@@ -187,9 +210,7 @@ const ChatPanel = forwardRef(function ChatPanel({
   }, [messages, isThinking]);
 
   // Fetch available models on mount (i.e. on every page refresh), and
-  // restore whatever the user last picked from localStorage. Hits
-  // Ollama's GET /api/tags -- the "earlier get route" -- which returns
-  // { models: [{ name: "llama3.1:8b", ... }, ...] }.
+  // restore whatever the user last picked from localStorage.
   useEffect(() => {
     const stored = localStorage.getItem(MODEL_STORAGE_KEY);
     if (stored) setSelectedModel(stored);
@@ -204,8 +225,9 @@ const ChatPanel = forwardRef(function ChatPanel({
       })
       .then((data) => {
         const rawList = Array.isArray(data.models) ? data.models : [];
-        // Ollama's /api/tags returns objects ({ name, model, size, ... }),
-        // not bare strings -- pull just the name out for the picker.
+        // The backend may return bare strings or Ollama-style objects
+        // ({ name, model, size, ... }) -- pull just the name out for
+        // the picker either way.
         const list = rawList
           .map((m) => (typeof m === "string" ? m : m.name ?? m.model))
           .filter(Boolean);
@@ -219,7 +241,7 @@ const ChatPanel = forwardRef(function ChatPanel({
         });
       })
       .catch((error) => {
-        console.error("Failed to fetch models from Ollama:", error);
+        console.error("Failed to fetch models:", error);
       })
       .finally(() => setIsLoadingModels(false));
   }, []);
@@ -269,10 +291,11 @@ const ChatPanel = forwardRef(function ChatPanel({
 
   // Reads a File into { dataUrl, base64 }. `base64` is the raw payload
   // (no "data:...;base64," prefix) -- exactly what Ollama's `images`
-  // field on a chat message expects. `dataUrl` is the same bytes with
-  // the prefix restored, safe to use directly as an <img src> AND safe
-  // to JSON.stringify into localStorage (unlike a blob: object URL,
-  // which stops working the moment the page reloads).
+  // field on a chat message expects, and what the backend's `documents`
+  // field expects too. `dataUrl` is the same bytes with the prefix
+  // restored, safe to use directly as an <img src> AND safe to
+  // JSON.stringify into localStorage (unlike a blob: object URL, which
+  // stops working the moment the page reloads).
   const fileToDataAndBase64 = (file) =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -288,28 +311,78 @@ const ChatPanel = forwardRef(function ChatPanel({
     fileInputRef.current?.click();
   };
 
+  // CHANGED: replaces the old image-only addImageFiles().
   // Shared by both the file picker and clipboard paste.
-  const addImageFiles = async (files) => {
-    const imageFiles = files.filter((f) => f.type.startsWith("image/"));
-    if (imageFiles.length === 0) return;
+  //   - images      -> attachedImages (sent to Ollama's vision `images`)
+  //   - documents   -> attachedDocs   (sent to the backend `documents`)
+  //   - anything else is rejected with a visible message instead of
+  //     being silently dropped (the old behaviour).
+  const addFiles = async (files) => {
+    if (files.length === 0) return;
 
-    const newEntries = await Promise.all(
-      imageFiles.map(async (file) => {
-        const { dataUrl, base64 } = await fileToDataAndBase64(file);
-        return {
-          id: crypto.randomUUID(),
-          file,
-          previewUrl: dataUrl,
-          base64,
-        };
-      })
+    const imageFiles = files.filter((f) => f.type.startsWith("image/"));
+    const docFiles = files.filter(
+      (f) => !f.type.startsWith("image/") && isDocFile(f)
+    );
+    const rejected = files.filter(
+      (f) => !imageFiles.includes(f) && !docFiles.includes(f)
     );
 
-    setAttachedImages((prev) => [...prev, ...newEntries]);
+    if (rejected.length > 0) {
+      alert(`Unsupported file type: ${rejected.map((f) => f.name).join(", ")}`);
+    }
+
+    if (imageFiles.length > 0) {
+      const newImages = await Promise.all(
+        imageFiles.map(async (file) => {
+          const { dataUrl, base64 } = await fileToDataAndBase64(file);
+          return {
+            id: crypto.randomUUID(),
+            file,
+            previewUrl: dataUrl,
+            base64,
+          };
+        })
+      );
+      setAttachedImages((prev) => [...prev, ...newImages]);
+    }
+
+    if (docFiles.length > 0) {
+      const tooBig = docFiles.filter((f) => f.size > MAX_DOC_BYTES);
+      if (tooBig.length > 0) {
+        alert(
+          `These files are over the 5 MB limit: ${tooBig
+            .map((f) => f.name)
+            .join(", ")}`
+        );
+      }
+
+      const slotsLeft = Math.max(0, MAX_DOCS - attachedDocs.length);
+      const okFiles = docFiles
+        .filter((f) => f.size <= MAX_DOC_BYTES)
+        .slice(0, slotsLeft);
+
+      if (docFiles.length - tooBig.length > slotsLeft) {
+        alert(`You can attach up to ${MAX_DOCS} documents at a time.`);
+      }
+
+      const newDocs = await Promise.all(
+        okFiles.map(async (file) => {
+          const { base64 } = await fileToDataAndBase64(file);
+          return {
+            id: crypto.randomUUID(),
+            name: file.name,
+            size: file.size,
+            base64,
+          };
+        })
+      );
+      setAttachedDocs((prev) => [...prev, ...newDocs]);
+    }
   };
 
   const handleFilesSelected = async (e) => {
-    await addImageFiles(Array.from(e.target.files || []));
+    await addFiles(Array.from(e.target.files || []));
     e.target.value = ""; // allow re-selecting the same file later
   };
 
@@ -323,11 +396,16 @@ const ChatPanel = forwardRef(function ChatPanel({
 
     e.preventDefault();
     const files = imageItems.map((item) => item.getAsFile()).filter(Boolean);
-    await addImageFiles(files);
+    await addFiles(files);
   };
 
   const handleRemoveImage = (id) => {
     setAttachedImages((prev) => prev.filter((img) => img.id !== id));
+  };
+
+  // CHANGED: remove a single attached document before sending.
+  const handleRemoveDoc = (id) => {
+    setAttachedDocs((prev) => prev.filter((doc) => doc.id !== id));
   };
 
   // Toggle whether a single message is sent as context on future
@@ -458,6 +536,11 @@ const ChatPanel = forwardRef(function ChatPanel({
    * attachments, since Ollama treats a present-but-empty images array
    * differently from an absent one on some models.
    *
+   * NOTE: attached *documents* are deliberately NOT part of this array.
+   * They travel in the separate top-level `documents` field of the
+   * payload (see handleSend), and the backend merges their extracted
+   * text into the latest user message itself.
+   *
    * Callers are expected to have already filtered the full message list
    * down to just what should be sent -- this function doesn't do any
    * filtering of its own.
@@ -478,18 +561,39 @@ const ChatPanel = forwardRef(function ChatPanel({
   const handleSend = async () => {
     const text = draft.trim();
 
-    if ((!text && attachedImages.length === 0) || isBusy) return;
+    // CHANGED: a message with only documents attached is now sendable too.
+    if (
+      (!text && attachedImages.length === 0 && attachedDocs.length === 0) ||
+      isBusy
+    ) {
+      return;
+    }
+
+    // CHANGED: copy the base64 payloads for the backend NOW, before
+    // attachedDocs is cleared below. If the user sends only a file with
+    // no text, give the model a default instruction.
+    const docsPayload = attachedDocs.map(({ name, base64 }) => ({
+      name,
+      base64,
+    }));
+    const messageText =
+      text || (attachedDocs.length > 0 ? "Please read the attached document(s) and summarize them." : "");
 
     const userMessage = {
       id: crypto.randomUUID(),
       role: "user",
-      text,
+      text: messageText,
       time: formatTime(),
       createdAt: new Date().toISOString(),
       // Local data: URI previews for rendering in the UI...
       imagePreviews: attachedImages.map((img) => img.previewUrl),
       // ...and the raw base64 payloads for Ollama's `images` field.
       images: attachedImages.map((img) => img.base64),
+      // CHANGED: only name + size are stored on the message (for showing
+      // the attachment chip in chat). The base64 is NOT stored here,
+      // because the whole messages array is saved to localStorage and a
+      // few documents would blow past its ~5 MB quota.
+      documents: attachedDocs.map(({ id, name, size }) => ({ id, name, size })),
       // New messages are included by default; the user can uncheck them
       // afterwards to exclude them from later requests (manual context
       // mode only -- see contextMode below).
@@ -501,6 +605,7 @@ const ChatPanel = forwardRef(function ChatPanel({
     setMessages(updatedMessages);
     setDraft("");
     setAttachedImages([]);
+    setAttachedDocs([]); // CHANGED
 
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -525,9 +630,19 @@ const ChatPanel = forwardRef(function ChatPanel({
         messages: buildOllamaMessages(contextMessages),
         stream: false,
         options: { num_predict: maxTokens },
+        // CHANGED: backend (conversation.py) reads exactly this key.
+        documents: docsPayload,
       };
 
-      console.log("Sending to Ollama:", payload);
+      // Log without the heavy base64 blobs so the console stays readable.
+      console.log("Sending to backend:", {
+        ...payload,
+        messages: payload.messages.map((m) => ({
+          ...m,
+          images: m.images ? `[${m.images.length} image(s)]` : undefined,
+        })),
+        documents: docsPayload.map((d) => ({ name: d.name, base64: "..." })),
+      });
 
       const response = await fetch(chat_endpoint, {
         method: "POST",
@@ -536,20 +651,29 @@ const ChatPanel = forwardRef(function ChatPanel({
       });
 
       if (!response.ok) {
+        // CHANGED: show the backend's own error text (FastAPI puts it in
+        // `detail`), e.g. "report.pdf exceeds the 5 MB file-size limit."
+        let detail = "";
+        try {
+          const errBody = await response.json();
+          detail = errBody?.detail ? ` — ${errBody.detail}` : "";
+        } catch {
+          // response had no JSON body; fall through with no detail
+        }
         throw new Error(
-          `Server returned ${response.status}: ${response.statusText}`
+          `Server returned ${response.status}: ${response.statusText}${detail}`
         );
       }
 
       const data = await response.json();
 
-      console.log("Ollama response:", data);
+      console.log("Backend response:", data);
 
-      // Ollama (stream: false) replies with { message: { role, content }, done, ... }
+      // Response shape: { message: { role, content }, ... }
       const assistantText = data.message?.content;
 
       if (!assistantText) {
-        throw new Error("Ollama response did not contain 'message.content'");
+        throw new Error("Response did not contain 'message.content'");
       }
 
       const assistantMessage = {
@@ -563,12 +687,12 @@ const ChatPanel = forwardRef(function ChatPanel({
 
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
-      console.error("Ollama API error:", error);
+      console.error("Chat API error:", error);
 
       const errorMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
-        text: `Sorry, I couldn't reach Ollama.\n\n\`${error.message}\``,
+        text: `Sorry, I couldn't get a reply.\n\n\`${error.message}\``,
         time: formatTime(),
         createdAt: new Date().toISOString(),
         included: true,
@@ -672,8 +796,10 @@ const ChatPanel = forwardRef(function ChatPanel({
           onPaste={handlePaste}
           textareaRef={textareaRef}
           attachedImages={attachedImages}
+          attachedDocs={attachedDocs}
           onAttachClick={handleAttachClick}
           onRemoveImage={handleRemoveImage}
+          onRemoveDoc={handleRemoveDoc}
           onOpenLightbox={openLightbox}
           fileInputRef={fileInputRef}
           onFilesSelected={handleFilesSelected}

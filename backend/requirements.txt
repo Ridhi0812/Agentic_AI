@@ -3,3 +3,10 @@ uvicorn[standard]
 ollama
 python-dotenv
 httpx
+pypdf
+pdfplumber
+python-docx
+openpyxl
+xlrd
+python-multipart
+pandas
