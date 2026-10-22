@@ -1,5 +1,5 @@
 // Local testing ke liye true, deploy ke waqt false
-const USE_LOCAL = true;
+const USE_LOCAL = false;
 
 export const OLLAMA_BASE_URL = USE_LOCAL
   ? "http://localhost:8002"
