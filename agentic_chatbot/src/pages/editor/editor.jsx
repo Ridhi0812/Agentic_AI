@@ -3,9 +3,6 @@ import MonacoEditor from "@monaco-editor/react";
 import AceEditor from "react-ace";
 import "./editor.css";
 
-// Ace needs each language mode and theme imported explicitly (it doesn't
-// bundle everything by default the way Monaco does). This is a reasonable
-// common set covering the same languages MONACO_LANGUAGE_MAP supports.
 import "ace-builds/src-noconflict/mode-python";
 import "ace-builds/src-noconflict/mode-javascript";
 import "ace-builds/src-noconflict/mode-typescript";
@@ -26,9 +23,6 @@ import "ace-builds/src-noconflict/mode-text";
 import "ace-builds/src-noconflict/theme-twilight";
 import "ace-builds/src-noconflict/ext-language_tools";
 
-// Your custom tag names -> Monaco's built-in language ids. Anything not
-// listed falls back to plaintext (Monaco still renders it fine, just
-// without keyword/syntax coloring).
 export const MONACO_LANGUAGE_MAP = {
   python: "python",
   py: "python",
@@ -62,7 +56,6 @@ export const MONACO_LANGUAGE_MAP = {
   rb: "ruby",
 };
 
-// Same idea, but using Ace's mode names (imported above).
 export const ACE_LANGUAGE_MAP = {
   python: "python",
   py: "python",
@@ -98,19 +91,6 @@ export const ACE_LANGUAGE_MAP = {
 
 const EDITOR_LINE_HEIGHT = 19;
 
-/**
- * The raw, editable code surface -- either Monaco or Ace, filling
- * whatever height its parent container gives it. No collapse/expand,
- * no header, no copy button: those are handled by whoever embeds this
- * (a preview card in chat, or the full-height CodePanel).
- *
- * Props:
- *  - lang: language tag as sent by the backend (e.g. "python", "react")
- *  - code: the current code string (controlled from outside)
- *  - onChange(newCode): called on every edit
- *  - editorType: "monaco" | "ace". Defaults to "monaco".
- *  - readOnly: disables editing (used for the collapsed chat preview)
- */
 export default function CodeEditor({
   lang,
   code,
@@ -120,17 +100,8 @@ export default function CodeEditor({
 }) {
   const [value, setValue] = useState(code);
 
-  // Ace requires a unique `name` per instance; generated once via useId
-  // (stable across re-renders) instead of Math.random() on every render,
-  // which was needlessly giving Ace a new identity on every parent update.
   const aceId = useId();
 
-  // Tracks whether the *last* value change came from typing inside this
-  // editor (in which case we must NOT hand `value` back down -- Monaco/Ace
-  // both own their internal buffer once mounted, and re-feeding them the
-  // same text on every keystroke is what caused cursor jumps / scroll
-  // resets / "dumped" characters) vs. from outside (a fresh backend reply,
-  // or the message being reset elsewhere), where we DO need to sync.
   const isInternalEdit = useRef(false);
 
   useEffect(() => {
