@@ -20,12 +20,14 @@ import {
 
 const MODEL_STORAGE_KEY = "chat_selected_model";
 
+// CHANGED: documents (PDF, Word, Excel, CSV, text, code) ke liye limits.
+// Ye backend (conversation.py) ki limits se match karti hain.
 const DOC_EXTENSIONS = [
   ".pdf", ".docx", ".xlsx", ".xls", ".csv", ".txt", ".md", ".json",
   ".py", ".js", ".jsx", ".ts", ".tsx", ".html", ".css", ".xml",
   ".yaml", ".yml", ".ini", ".log",
 ];
-const MAX_DOC_BYTES = 5 * 1024 * 1024; 
+const MAX_DOC_BYTES = 5 * 1024 * 1024; // 5 MB per file
 const MAX_DOCS = 5;
 
 const isDocFile = (file) =>
@@ -40,6 +42,21 @@ const DEFAULT_GREETING = {
   included: true,
 };
 
+/**
+ * Chatbot-only build. Everything that depended on the old backend
+ * (login/auth, the chat_log/messages graph DB, the per-chat file tree,
+ * the terminal websocket) is gone.
+ *
+ * There can be any number of separate conversations now ("chats"), each
+ * with its own id, title, and message list, all living in this browser's
+ * localStorage (see local_chat_store.js) rather than a backend DB. Only
+ * one chat is "active" (rendered, and the one new messages get appended
+ * to) at a time -- see ChatSwitcher for how the user moves between them.
+ * Sending a message still works exactly the same way as before: on every
+ * turn, the currently-active chat's "included" messages go to the
+ * backend's /chat endpoint -- see buildOllamaMessages() below for exactly
+ * how they're turned into the { role, content } shape Ollama expects.
+ *
  * CHANGED: the composer now accepts two kinds of attachments:
  *   - images     -> sent inside the message's `images` field (vision)
  *   - documents  -> sent in the top-level `documents` field of the
@@ -63,7 +80,10 @@ const ChatPanel = forwardRef(function ChatPanel({
   assistant = { id: "assistant", name: "AI Assistant", username: "assistant" },
   assistantSubtitle = "Ready when you are",
 }, ref) {
-  
+  // Ensures a chat exists and is marked active before first render --
+  // runs at most once (lazy useState initializer), and any chat it
+  // creates is visible to the chats/messages initializers below since
+  // they run synchronously afterwards, in the same render.
   const ensureActiveChat = () => {
     const existing = listChats();
     let activeId = getActiveChatId();
@@ -88,13 +108,33 @@ const ChatPanel = forwardRef(function ChatPanel({
     () => loadChatMessages(activeChatId) ?? [DEFAULT_GREETING]
   );
 
+  // Tracks which chat id the current `messages` state actually belongs
+  // to. This is the fix for a real bug: switching chats used to be two
+  // separate `useEffect`s (one reacting to activeChatId to persist
+  // `messages`, another reacting to activeChatId to reload `messages`).
+  // React batches setChats()+setActiveChatId() into a single render, so
+  // for one commit `activeChatId` pointed at the *new* chat while
+  // `messages` still held the *old* chat's content -- and the
+  // persistence effect (which ran first) would save that mismatched
+  // pair, overwriting the new chat's storage key with the old chat's
+  // messages (and, via title auto-derivation, its title too). That's
+  // what caused a freshly created chat to instantly "adopt" the
+  // previous chat's name and content.
+  //
+  // The fix: never let messages and activeChatId change independently.
+  // Every switch goes through switchToChat() below, which updates this
+  // ref and calls setMessages/setActiveChatId together, synchronously,
+  // in the same handler -- so the persistence effect can simply check
+  // "do these two actually match?" before ever writing to storage.
   const loadedChatIdRef = useRef(activeChatId);
 
   const [draft, setDraft] = useState("");
   const [isThinking, setIsThinking] = useState(false);
 
+  // Each entry: { id, file, previewUrl (data: URI), base64 }
   const [attachedImages, setAttachedImages] = useState([]);
 
+  // CHANGED: attached documents. Each entry: { id, name, size, base64 }
   const [attachedDocs, setAttachedDocs] = useState([]);
 
   const [models, setModels] = useState([]);
@@ -106,6 +146,8 @@ const ChatPanel = forwardRef(function ChatPanel({
   const MIN_TOKENS = 64;
   const MAX_TOKENS = 4096;
 
+  // Currently expanded image, shown fullscreen in the lightbox. Null when
+  // no lightbox should be rendered.
   const [lightboxSrc, setLightboxSrc] = useState(null);
 
   const scrollRef = useRef(null);
@@ -120,23 +162,40 @@ const ChatPanel = forwardRef(function ChatPanel({
   const allIncluded = messages.length > 0 && includedCount === messages.length;
   const noneIncluded = includedCount === 0;
 
+  // Loads a different chat into view. Everything here happens
+  // synchronously, in one call, so `messages` and `activeChatId` are
+  // never briefly out of sync the way they were with the old two-effect
+  // approach (see loadedChatIdRef's comment above).
   const switchToChat = (id) => {
     persistActiveChatId(id);
     loadedChatIdRef.current = id;
     setMessages(loadChatMessages(id) ?? [DEFAULT_GREETING]);
     setDraft("");
     setAttachedImages([]);
-    setAttachedDocs([]); 
+    setAttachedDocs([]); // CHANGED
     setIsThinking(false);
     setActiveChatId(id);
   };
 
+  // Persist the active chat's messages to localStorage whenever they
+  // change, and refresh the chat list (titles/timestamps may have
+  // changed -- saveChatMessages auto-derives a title from the first user
+  // message and bumps updatedAt). Guarded by loadedChatIdRef so a save
+  // is never attempted with a (chatId, messages) pair that don't
+  // actually belong together. imagePreviews are data: URIs (not blob:
+  // object URLs), so the messages array is always safe to
+  // JSON.stringify as-is -- see addFiles below for why.
   useEffect(() => {
     if (loadedChatIdRef.current !== activeChatId) return;
     saveChatMessages(activeChatId, messages);
     setChats(listChats());
   }, [activeChatId, messages]);
 
+  // Auto-scroll to the latest message, but only when a message is
+  // actually *added* -- not on every content change. Editing code in the
+  // panel calls setMessages on every keystroke (to permanently persist
+  // the edit), which would otherwise re-trigger this effect and yank the
+  // chat scroll position back to the bottom while you're mid-edit.
   const prevMessageCount = useRef(messages.length);
   useEffect(() => {
     const grew = messages.length > prevMessageCount.current;
@@ -150,6 +209,8 @@ const ChatPanel = forwardRef(function ChatPanel({
     }
   }, [messages, isThinking]);
 
+  // Fetch available models on mount (i.e. on every page refresh), and
+  // restore whatever the user last picked from localStorage.
   useEffect(() => {
     const stored = localStorage.getItem(MODEL_STORAGE_KEY);
     if (stored) setSelectedModel(stored);
@@ -164,11 +225,16 @@ const ChatPanel = forwardRef(function ChatPanel({
       })
       .then((data) => {
         const rawList = Array.isArray(data.models) ? data.models : [];
+        // The backend may return bare strings or Ollama-style objects
+        // ({ name, model, size, ... }) -- pull just the name out for
+        // the picker either way.
         const list = rawList
           .map((m) => (typeof m === "string" ? m : m.name ?? m.model))
           .filter(Boolean);
         setModels(list);
 
+        // Keep the stored choice if it's still valid; otherwise fall
+        // back to the first available model.
         setSelectedModel((prev) => {
           if (prev && list.includes(prev)) return prev;
           return list[0] ?? "";
@@ -180,6 +246,7 @@ const ChatPanel = forwardRef(function ChatPanel({
       .finally(() => setIsLoadingModels(false));
   }, []);
 
+  // Close the model popover on outside click or Escape.
   useEffect(() => {
     if (!isModelMenuOpen) return;
 
@@ -208,6 +275,10 @@ const ChatPanel = forwardRef(function ChatPanel({
     setIsModelMenuOpen(false);
   };
 
+  // Optional per-model subtitle, shown in the popover the way Claude.ai
+  // shows "Most efficient for everyday tasks" etc. under each option.
+  // Falls back to nothing if a model isn't in this map (e.g. any model
+  // name Ollama reports that we don't specifically recognize).
   const MODEL_DESCRIPTIONS = {
     "llama3.1": "Meta's general-purpose model",
     "llama3": "Meta's general-purpose model",
@@ -218,6 +289,13 @@ const ChatPanel = forwardRef(function ChatPanel({
     "qwen2.5": "Strong at reasoning and code",
   };
 
+  // Reads a File into { dataUrl, base64 }. `base64` is the raw payload
+  // (no "data:...;base64," prefix) -- exactly what Ollama's `images`
+  // field on a chat message expects, and what the backend's `documents`
+  // field expects too. `dataUrl` is the same bytes with the prefix
+  // restored, safe to use directly as an <img src> AND safe to
+  // JSON.stringify into localStorage (unlike a blob: object URL, which
+  // stops working the moment the page reloads).
   const fileToDataAndBase64 = (file) =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -233,6 +311,12 @@ const ChatPanel = forwardRef(function ChatPanel({
     fileInputRef.current?.click();
   };
 
+  // CHANGED: replaces the old image-only addImageFiles().
+  // Shared by both the file picker and clipboard paste.
+  //   - images      -> attachedImages (sent to Ollama's vision `images`)
+  //   - documents   -> attachedDocs   (sent to the backend `documents`)
+  //   - anything else is rejected with a visible message instead of
+  //     being silently dropped (the old behaviour).
   const addFiles = async (files) => {
     if (files.length === 0) return;
 
@@ -299,13 +383,16 @@ const ChatPanel = forwardRef(function ChatPanel({
 
   const handleFilesSelected = async (e) => {
     await addFiles(Array.from(e.target.files || []));
-    e.target.value = ""; 
+    e.target.value = ""; // allow re-selecting the same file later
   };
 
+  // Lets the user paste a screenshot or copied image straight into the
+  // textarea with Ctrl+V / Cmd+V. If the clipboard has no image, normal
+  // text pasting is left untouched.
   const handlePaste = async (e) => {
     const items = Array.from(e.clipboardData?.items || []);
     const imageItems = items.filter((item) => item.type.startsWith("image/"));
-    if (imageItems.length === 0) return; 
+    if (imageItems.length === 0) return; // let text paste through normally
 
     e.preventDefault();
     const files = imageItems.map((item) => item.getAsFile()).filter(Boolean);
@@ -316,10 +403,14 @@ const ChatPanel = forwardRef(function ChatPanel({
     setAttachedImages((prev) => prev.filter((img) => img.id !== id));
   };
 
+  // CHANGED: remove a single attached document before sending.
   const handleRemoveDoc = (id) => {
     setAttachedDocs((prev) => prev.filter((doc) => doc.id !== id));
   };
 
+  // Toggle whether a single message is sent as context on future
+  // requests. Disabled/forced-on in the UI while contextMode === "auto"
+  // (see message.jsx) -- this handler simply isn't reachable then.
   const handleToggleIncluded = (id) => {
     setMessages((prev) =>
       prev.map((msg) =>
@@ -335,6 +426,10 @@ const ChatPanel = forwardRef(function ChatPanel({
     );
   };
 
+  // Edits made in a message's code block (inline or in the docked panel)
+  // permanently overwrite that message's stored text (and therefore
+  // localStorage), so the next time this message is sent as context, the
+  // edited code goes to Ollama instead of the original reply.
   const handleCodeEdit = (messageId, blockIndex, newCode) => {
     setMessages((prev) =>
       prev.map((msg) =>
@@ -350,9 +445,18 @@ const ChatPanel = forwardRef(function ChatPanel({
     onCodeBlockEdited?.({ source: "message", messageId, blockIndex, code: newCode });
   };
 
+  // Clicking a long code block's preview card notifies the parent, which
+  // owns the docked CodePanel's open/closed state and what's loaded in
+  // it.
   const handleOpenCodePanel = (block) =>
     onOpenCodeBlock?.({ source: "message", ...block });
 
+  // Exposed to the parent via ref: when a message's code block is open
+  // and edited directly inside the standalone CodePanel (rather than the
+  // inline mini-editor here in chat), the parent has no direct access to
+  // this component's setMessages/rebuildTextWithEditedCode -- this is
+  // the one imperative escape hatch that lets it trigger the same
+  // rewrite handleCodeEdit already does for inline edits.
   useImperativeHandle(ref, () => ({
     applyCodeEdit: handleCodeEdit,
   }));
@@ -366,6 +470,9 @@ const ChatPanel = forwardRef(function ChatPanel({
   const openLightbox = (src) => setLightboxSrc(src);
   const closeLightbox = () => setLightboxSrc(null);
 
+  // Resets the *current* chat back to just the greeting (keeps its id
+  // and title intact) -- distinct from deleting a chat entirely, which
+  // is done from the trash icon in ChatSwitcher instead.
   const handleClearChat = () => {
     if (!window.confirm("Clear this conversation? This can't be undone.")) return;
     setMessages([DEFAULT_GREETING]);
@@ -375,6 +482,11 @@ const ChatPanel = forwardRef(function ChatPanel({
   const handleNewChat = (name) => {
     const trimmed = name?.trim();
     const title = trimmed || "New chat";
+    // If the user explicitly typed a name in the "New chat" dialog, treat
+    // it like a manual rename (never auto-overwritten by title
+    // derivation from the first message). Left blank, it behaves as
+    // before: starts as "New chat" and adopts a derived title once the
+    // first message is sent.
     const id = createChat(title, { isManualTitle: Boolean(trimmed) });
     saveChatMessages(id, [DEFAULT_GREETING]);
     setChats(listChats());
@@ -409,6 +521,30 @@ const ChatPanel = forwardRef(function ChatPanel({
     }
   };
 
+  /*
+   * Turns the set of messages that should count as context into the
+   * exact array Ollama's /api/chat endpoint accepts for `messages`:
+   *
+   *   [
+   *     { "role": "user", "content": "What is in this image?", "images": ["<base64>", ...] },
+   *     { "role": "assistant", "content": "It looks like..." }
+   *   ]
+   *
+   * Only "user" and "assistant" roles are ever produced here (Ollama also
+   * accepts "system", but nothing in this UI creates system messages
+   * today). `images` is included only when the message actually has
+   * attachments, since Ollama treats a present-but-empty images array
+   * differently from an absent one on some models.
+   *
+   * NOTE: attached *documents* are deliberately NOT part of this array.
+   * They travel in the separate top-level `documents` field of the
+   * payload (see handleSend), and the backend merges their extracted
+   * text into the latest user message itself.
+   *
+   * Callers are expected to have already filtered the full message list
+   * down to just what should be sent -- this function doesn't do any
+   * filtering of its own.
+   */
   const buildOllamaMessages = (allMessages) => {
     return allMessages.map((msg) => {
       const entry = {
@@ -425,6 +561,7 @@ const ChatPanel = forwardRef(function ChatPanel({
   const handleSend = async () => {
     const text = draft.trim();
 
+    // CHANGED: a message with only documents attached is now sendable too.
     if (
       (!text && attachedImages.length === 0 && attachedDocs.length === 0) ||
       isBusy
@@ -432,6 +569,9 @@ const ChatPanel = forwardRef(function ChatPanel({
       return;
     }
 
+    // CHANGED: copy the base64 payloads for the backend NOW, before
+    // attachedDocs is cleared below. If the user sends only a file with
+    // no text, give the model a default instruction.
     const docsPayload = attachedDocs.map(({ name, base64 }) => ({
       name,
       base64,
@@ -445,9 +585,18 @@ const ChatPanel = forwardRef(function ChatPanel({
       text: messageText,
       time: formatTime(),
       createdAt: new Date().toISOString(),
+      // Local data: URI previews for rendering in the UI...
       imagePreviews: attachedImages.map((img) => img.previewUrl),
+      // ...and the raw base64 payloads for Ollama's `images` field.
       images: attachedImages.map((img) => img.base64),
+      // CHANGED: only name + size are stored on the message (for showing
+      // the attachment chip in chat). The base64 is NOT stored here,
+      // because the whole messages array is saved to localStorage and a
+      // few documents would blow past its ~5 MB quota.
       documents: attachedDocs.map(({ id, name, size }) => ({ id, name, size })),
+      // New messages are included by default; the user can uncheck them
+      // afterwards to exclude them from later requests (manual context
+      // mode only -- see contextMode below).
       included: true,
     };
 
@@ -456,7 +605,7 @@ const ChatPanel = forwardRef(function ChatPanel({
     setMessages(updatedMessages);
     setDraft("");
     setAttachedImages([]);
-    setAttachedDocs([]);
+    setAttachedDocs([]); // CHANGED
 
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -465,6 +614,13 @@ const ChatPanel = forwardRef(function ChatPanel({
     setIsThinking(true);
 
     try {
+      // Manual mode: only the messages the user has explicitly checked
+      // (via the per-message checkboxes in message.jsx / "Send all as
+      // context" in the bar above the composer) go over the wire.
+      // Auto mode: there's no backend retrieval step anymore to pick
+      // "relevant" messages for you, so it simply means the whole
+      // conversation goes every time -- the per-message checkboxes are
+      // disabled and treated as always-on (see message.jsx).
       const contextMessages = isAutoContext
         ? updatedMessages
         : updatedMessages.filter((msg) => msg.included);
@@ -474,8 +630,11 @@ const ChatPanel = forwardRef(function ChatPanel({
         messages: buildOllamaMessages(contextMessages),
         stream: false,
         options: { num_predict: maxTokens },
+        // CHANGED: backend (conversation.py) reads exactly this key.
         documents: docsPayload,
       };
+
+      // Log without the heavy base64 blobs so the console stays readable.
       console.log("Sending to backend:", {
         ...payload,
         messages: payload.messages.map((m) => ({
@@ -492,11 +651,14 @@ const ChatPanel = forwardRef(function ChatPanel({
       });
 
       if (!response.ok) {
+        // CHANGED: show the backend's own error text (FastAPI puts it in
+        // `detail`), e.g. "report.pdf exceeds the 5 MB file-size limit."
         let detail = "";
         try {
           const errBody = await response.json();
           detail = errBody?.detail ? ` — ${errBody.detail}` : "";
         } catch {
+          // response had no JSON body; fall through with no detail
         }
         throw new Error(
           `Server returned ${response.status}: ${response.statusText}${detail}`
@@ -507,6 +669,7 @@ const ChatPanel = forwardRef(function ChatPanel({
 
       console.log("Backend response:", data);
 
+      // Response shape: { message: { role, content }, ... }
       const assistantText = data.message?.content;
 
       if (!assistantText) {
