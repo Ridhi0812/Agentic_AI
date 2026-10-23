@@ -4,7 +4,7 @@
   flex-shrink: 0;
   width: 16px;
   height: 16px;
-  margin-bottom: 8px; /* nudges it up to align with the bubble's baseline */
+  margin-bottom: 8px; 
   border-radius: 5px;
   border: 1.5px solid var(--chat-ink-soft);
   background: transparent;
@@ -95,9 +95,6 @@
   transition: opacity 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
 }
 
-/* Assistant replies may contain inline code editors, which need real
-   width to lay out lines/scrollbars sensibly -- give them more room than
-   a typical short text bubble. */
 .chat-bubble-theirs {
   max-width: 92%;
   background: var(--chat-bubble-theirs);
@@ -120,8 +117,6 @@
   border-bottom-left-radius: var(--chat-radius);
 }
 
-/* Excluded (unselected as context) messages get a strong, unmistakable
-   treatment: desaturated, dashed outline, no glow, plus a small label. */
 .chat-bubble-excluded {
   opacity: 0.55;
   filter: grayscale(65%);
@@ -138,7 +133,7 @@
   flex-direction: column;
   gap: 6px;
   flex: 1 1 auto;
-  min-width: 0; /* lets images/text shrink instead of overflowing the bubble */
+  min-width: 0; 
 }
 
 .chat-bubble-text {
@@ -155,7 +150,6 @@
   white-space: nowrap;
 }
 
-/* Typing indicator */
 .chat-typing {
   padding: 12px 14px;
   gap: 4px;
@@ -190,10 +184,6 @@
   }
 }
 
-/* ==========================================================================
-   Image attachments — inside a sent message bubble
-   ========================================================================== */
-
 .chat-image-grid {
   display: flex;
   flex-wrap: wrap;
@@ -210,11 +200,6 @@
   cursor: zoom-in;
 }
 
-/* ==========================================================================
-   HTML rendering (assistant replies) — backend sends real HTML now,
-   rendered via dangerouslySetInnerHTML, so these style the actual tags
-   instead of markdown-derived classes.
-   ========================================================================== */
 
 .chat-html-content {
   font-size: 13px;
@@ -223,9 +208,6 @@
   text-align: left;
 }
 
-/* The backend's HTML may carry its own inline style="text-align:center"
-   or similar on individual elements -- override unconditionally so our
-   layout always wins regardless of what the model outputs. */
 .chat-html-content * {
   text-align: left !important;
 }
@@ -308,8 +290,6 @@
   text-align: left;
 }
 
-/* Inline code reads clearly as code: tinted pill, hairline border,
-   and a monospace face distinct from the surrounding prose. */
 .chat-inline-code,
 .chat-html-content code {
   font-family: var(--font-mono);
@@ -333,16 +313,6 @@
   text-underline-offset: 2px;
 }
 
-/* ==========================================================================
-   Code chunks inside a chat bubble
-
-   Short blocks (<= COLLAPSE_THRESHOLD_LINES) render as a small always-
-   editable inline editor. Long blocks render as a static, read-only,
-   syntax-highlighted preview card that opens the docked CodePanel on
-   click, matching Claude.ai's artifact pattern instead of growing the
-   bubble itself.
-   ========================================================================== */
-
 .chat-code-lang {
   display: flex;
   align-items: center;
@@ -362,8 +332,6 @@
   font-weight: 400;
   font-size: 10px;
 }
-
-/* -- Short, always-editable inline block -- */
 
 .chat-code-inline {
   width: 100%;
@@ -397,7 +365,6 @@
   font-size: 11.5px;
 }
 
-/* -- Long block: static clickable preview card -- */
 
 .chat-code-preview-card {
   position: relative;
