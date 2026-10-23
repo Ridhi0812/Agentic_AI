@@ -13,12 +13,6 @@ function relativeTime(iso) {
   return new Date(iso).toLocaleDateString();
 }
 
-/**
- * Trigger button (current chat title) + dropdown popover listing every
- * saved chat. Mirrors the open/outside-click-closes/Escape-closes
- * interaction pattern the model picker in chat_panel.jsx already uses,
- * for consistency.
- */
 export default function ChatSwitcher({
   chats,
   activeChatId,
@@ -68,7 +62,6 @@ export default function ChatSwitcher({
 
   useEffect(() => {
     if (isNewChatModalOpen) {
-      // Focus after the dialog has actually mounted.
       requestAnimationFrame(() => newChatInputRef.current?.focus());
     }
   }, [isNewChatModalOpen]);
@@ -87,7 +80,7 @@ export default function ChatSwitcher({
 
   const handleDelete = (e, chat) => {
     e.stopPropagation();
-    if (chats.length <= 1) return; // always keep at least one chat around
+    if (chats.length <= 1) return;
     if (window.confirm(`Delete "${chat.title}"? This can't be undone.`)) {
       onDelete(chat.id);
     }
@@ -102,9 +95,7 @@ export default function ChatSwitcher({
   const closeNewChatModal = () => setIsNewChatModalOpen(false);
 
   const confirmNewChat = () => {
-    // A blank name is fine -- onNew falls back to "New chat" and lets it
-    // auto-title from the first message, same as before this dialog
-    // existed.
+    
     onNew(newChatName);
     setIsNewChatModalOpen(false);
   };
