@@ -1,7 +1,5 @@
 import "./input_box.css";
 
-// CHANGED: file picker ab chatpanel.jsx ki DOC_EXTENSIONS list ke barabar hai.
-// ".doc" hata diya, kyunki backend sirf .docx padh sakta hai.
 const ACCEPT_TYPES = [
   "image/*",
   ".pdf",
@@ -26,7 +24,6 @@ const ACCEPT_TYPES = [
   ".log",
 ].join(",");
 
-// CHANGED: file ke type ke hisaab se icon.
 const getDocIcon = (name = "") => {
   const lower = name.toLowerCase();
   if (lower.endsWith(".pdf")) return "📕";
@@ -35,7 +32,6 @@ const getDocIcon = (name = "") => {
   return "📄";
 };
 
-// CHANGED: bytes ko KB / MB mein badalta hai.
 const formatSize = (size) => {
   if (typeof size !== "number") return "";
   if (size < 1024 * 1024) {
@@ -44,17 +40,6 @@ const formatSize = (size) => {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-/**
- * Bottom composer: pending image and document attachments,
- * textarea, model picker, token slider, and send controls.
- *
- * Attachment state and upload/send logic are managed by the
- * parent ChatPanel component and passed down through props.
- *
- * CHANGED: attachments are now two separate lists --
- *   attachedImages: [{ id, file, previewUrl, base64 }]
- *   attachedDocs:   [{ id, name, size, base64 }]
- */
 export default function InputBox({
   draft,
   onInput,
@@ -93,10 +78,10 @@ export default function InputBox({
 
   return (
     <div className="chat-input-area">
-      {/* Attachment previews */}
+    
       {hasAttachments && (
         <div className="chat-attach-preview-row">
-          {/* Images: thumbnail, click to open fullscreen */}
+          
           {attachedImages.map((img) => (
             <div className="chat-attach-preview" key={img.id}>
               <img
@@ -120,7 +105,7 @@ export default function InputBox({
             </div>
           ))}
 
-          {/* CHANGED: Documents: icon + name + size chip */}
+        
           {attachedDocs.map((doc) => (
             <div className="chat-attach-preview" key={doc.id}>
               <div className="chat-file-preview">
@@ -320,8 +305,7 @@ export default function InputBox({
             </div>
           </div>
 
-          {/* CHANGED: documents bhi count hote hain, taaki sirf file
-              attach karke bhi Send button enable ho jaye. */}
+          
           <button
             type="button"
             className="chat-send-btn"
