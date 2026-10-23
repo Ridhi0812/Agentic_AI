@@ -1,11 +1,3 @@
-/* ==========================================================================
-   Header (pinned, never scrolls)
-
-   Relies on --chat-* custom properties defined in chat_panel.css's
-   .chat-screen scope. This file is only ever rendered inside .chat-screen,
-   so those variables are in scope via normal CSS cascade.
-   ========================================================================== */
-
 .chat-header-wrap {
   display: flex;
   flex-direction: column;
@@ -57,10 +49,6 @@
   color: var(--chat-accent-ink);
 }
 
-/* Reserved slot for a future sidebar-toggle button (hamburger icon),
-   sitting before the avatar. Rendered by Header only once a sidebar
-   exists; harmless/unused until then. Sized to match chat-theme-toggle
-   so it drops in without further header changes. */
 .chat-sidebar-toggle {
   width: 24px;
   height: 24px;
