@@ -1,3 +1,4 @@
+
 const INDEX_KEY = "ollama_chats_index_v1";
 const MESSAGES_KEY_PREFIX = "ollama_chat_messages_v1:";
 const ACTIVE_CHAT_KEY = "ollama_active_chat_v1";
@@ -22,15 +23,28 @@ function writeIndex(index) {
     console.error("Failed to save chat index:", error);
   }
 }
+
+// Chats are always handed back newest-first, the way a chat list expects.
 function sortedByRecency(index) {
   return [...index].sort(
     (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)
   );
 }
+
+/** List every chat (id/title/timestamps only), most recently updated first. */
 export function listChats() {
   return sortedByRecency(readIndex());
 }
 
+/** Create a new, empty chat entry in the index and return its id. Does
+ *  not write a messages key -- callers write that separately (typically
+ *  right away, via saveChatMessages) once they have an initial message
+ *  list (e.g. a greeting).
+ *
+ *  Pass isManualTitle: true when `title` came directly from the user
+ *  (e.g. typed into a "name this chat" dialog) so saveChatMessages'
+ *  auto-titling never overwrites it once real messages start coming in
+ *  -- same protection renameChat gives an existing chat. */
 export function createChat(title = "New chat", { isManualTitle = false } = {}) {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -52,6 +66,12 @@ export function loadChatMessages(chatId) {
     return null;
   }
 }
+
+// Auto-titling: once a chat has a first user message and still has its
+// placeholder title, derive a short title from it -- the same UX
+// shorthand most chat apps use instead of asking the user to name every
+// new thread up front. Never overwrites a title the user set manually
+// (renameChat marks the chat so this won't clobber it -- see isManual).
 function deriveTitle(messages) {
   const firstUserMessage = messages.find((m) => m.role === "user" && m.text?.trim());
   if (!firstUserMessage) return null;
@@ -59,17 +79,23 @@ function deriveTitle(messages) {
   return text.length > 48 ? `${text.slice(0, 48)}…` : text;
 }
 
+/** Persist a chat's full message list, and bump its updatedAt (and, if
+ *  it still has an auto-derived/placeholder title, refresh that title
+ *  from the first user message). */
 export function saveChatMessages(chatId, messages) {
   if (!chatId) return;
   try {
     localStorage.setItem(messagesKey(chatId), JSON.stringify(messages));
   } catch (error) {
+    // Most likely quota exceeded (e.g. a lot of large base64 images) --
+    // not fatal, the in-memory conversation still works for this tab,
+    // it just won't survive a reload.
     console.error("Failed to save messages for chat", chatId, error);
   }
 
   const index = readIndex();
   const entry = index.find((c) => c.id === chatId);
-  if (!entry) return; 
+  if (!entry) return; // chat was deleted out from under this save; ignore
 
   entry.updatedAt = new Date().toISOString();
   if (!entry.isManualTitle) {
@@ -79,6 +105,8 @@ export function saveChatMessages(chatId, messages) {
   writeIndex(index);
 }
 
+/** User-driven rename. Marks the chat so auto-titling never overwrites
+ *  it again. */
 export function renameChat(chatId, title) {
   const trimmed = title.trim();
   if (!trimmed) return;
