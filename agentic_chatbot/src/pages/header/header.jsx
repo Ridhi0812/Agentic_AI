@@ -1,19 +1,5 @@
 import "./header.css";
 
-/**
- * Top bar of the chat panel: assistant identity/status, code-panel
- * toggle, editor-engine switch, theme switch, context-mode switch, and
- * clear-chat. Purely presentational -- all state lives in ChatPanel and
- * is passed in as props.
- *
- * contextMode is now a purely client-side switch (no backend similarity
- * retrieval to configure -- there's no backend at all anymore):
- *  - "manual": the per-message checkboxes in message.jsx (and the "Send
- *    all as context" toggle in ChatPanel's context bar) decide what goes
- *    to Ollama on the next turn.
- *  - "auto": the whole conversation is always sent; checkboxes are
- *    disabled and shown as always-checked.
- */
 export default function Header({
   assistantName,
   assistantSubtitle,
@@ -130,8 +116,7 @@ export default function Header({
       </button>
       </div>
 
-      {/* Context mode row: manual (checkbox-based selection) vs auto
-          (always send the whole conversation, checkboxes disabled). */}
+  
       <div className="chat-context-mode-row">
         <div className="chat-context-mode-toggle" role="tablist">
           <button
