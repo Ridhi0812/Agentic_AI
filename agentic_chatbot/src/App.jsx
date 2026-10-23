@@ -61,7 +61,6 @@ function App() {
     localStorage.setItem(CONTEXT_MODE_STORAGE_KEY, mode);
   };
 
-  // ---- Docked CodePanel state (opened code blocks from chat) ----
   const [isCodePanelOpen, setIsCodePanelOpen] = useState(false);
   const [editorTabs, setEditorTabs] = useState([]);
   const [activeTabId, setActiveTabId] = useState(null);
@@ -70,7 +69,7 @@ function App() {
   const toggleCodePanel = () => setIsCodePanelOpen((open) => !open);
   const closeCodePanel = () => setIsCodePanelOpen(false);
 
-  // Clicking a long code block's preview card in chat opens it here.
+ 
   const handleOpenCodeBlock = ({ messageId, blockIndex, lang, code }) => {
     const tab = createMessageTab({ messageId, blockIndex, lang, code });
     setEditorTabs((prev) => {
@@ -81,18 +80,12 @@ function App() {
     setIsCodePanelOpen(true);
   };
 
-  // Fired by ChatPanel whenever a message's code block is edited
-  // (whether from the inline mini-editor or the docked panel itself) --
-  // keeps that tab's displayed code in sync if it happens to be open.
+
   const handleCodeBlockEdited = ({ messageId, blockIndex, code }) => {
     const tabId = `message:${messageId}:${blockIndex}`;
     setEditorTabs((prev) => updateTabCode(prev, tabId, code));
   };
 
-  // Edits made directly in a CodePanel tab need to flow back into
-  // ChatPanel's own message state (that's where rebuildTextWithEditedCode
-  // and the message list live) -- chatPanelApiRef exposes exactly that
-  // one method for this purpose.
   const chatPanelApiRef = useRef(null);
 
   const handleChangeTab = (tabId, newCode) => {
@@ -101,9 +94,6 @@ function App() {
     const tab = editorTabs.find((t) => t.id === tabId);
     if (!tab) return;
 
-    // Every tab in this build is message-sourced (no file tree exists
-    // to route a "file" tab's edits to) -- route straight back to
-    // ChatPanel's own message state.
     chatPanelApiRef.current?.applyCodeEdit(tab.messageId, tab.blockIndex, newCode);
   };
 
