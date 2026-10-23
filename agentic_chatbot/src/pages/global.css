@@ -1,22 +1,3 @@
-/* ==========================================================================
-   Global styles
-
-   Single source of truth for:
-   - Font imports (previously duplicated identically across 2 files)
-   - --chat-* theme tokens, light + dark (previously duplicated wholesale
-     between chat_panel.css and layout.css)
-   - Shared cross-component patterns that recur with slightly different
-     class names in header.css, codepanel.css, message.css, sidebar.css
-     (small round icon buttons, monospace/code type)
-
-   Import this ONCE, before any component CSS, in your app's entry point
-   (e.g. main.jsx: `import "./pages/global.css"`). Component CSS files no
-   longer declare their own copy of --chat-* tokens or @import the fonts;
-   they just consume var(--chat-*) as before -- nothing about how
-   component CSS *reads* these tokens changes, only where they're
-   declared.
-   ========================================================================== */
-
 @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap");
 
 :root {
@@ -25,17 +6,7 @@
   --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
 }
 
-/* ==========================================================================
-   Theme tokens
-
-   Declared on .layout-shell, the app's actual root element (see
-   layout.jsx) so every component -- whether it's a descendant of
-   .chat-screen or a sibling of it, like Sidebar -- inherits the same
-   values via normal CSS cascade from their nearest common ancestor.
-   ========================================================================== */
-
 .layout-shell {
-  /* Light theme (default) */
   --chat-bg: #faf9f6;
   --chat-surface: #ffffff;
   --chat-surface-alt: #f4f2ed;
@@ -62,11 +33,7 @@
 
   --chat-error: #c14a53;
   --chat-error-glow: rgba(193, 74, 83, 0.25);
-
-  /* Text colors for chrome that's intentionally always-dark (code panel
-     header, terminal), independent of the app's light/dark theme --
-     matches --chat-code-bg/--chat-code-header-bg, which are also fixed
-     dark regardless of theme. */
+   
   --chat-code-chrome-fg: #c8ccd1;
   --chat-code-chrome-fg-muted: #90959c;
 
@@ -105,17 +72,6 @@
   --chat-shadow-soft: 0 8px 28px rgba(0, 0, 0, 0.35);
 }
 
-/* ==========================================================================
-   Shared cross-component patterns
-
-   These class names are additive -- apply them ALONGSIDE a component's
-   own class (e.g. <button className="file-tree-icon-btn icon-btn">), so
-   component CSS can still add its own sizing/spacing overrides without
-   needing !important. This is what lets the many near-identical "small
-   round icon button" definitions across header.css, codepanel.css,
-   message.css, and sidebar.css collapse to one shared base.
-   ========================================================================== */
-
 .icon-btn {
   display: flex;
   align-items: center;
@@ -133,9 +89,6 @@
   color: var(--chat-accent);
 }
 
-/* Variant for icon buttons that sit on the dark code-block/panel chrome
-   (copy/close buttons in codepanel.css, message.css code chunks) rather
-   than the light surface chrome (sidebar, header). */
 .icon-btn-on-dark {
   color: #c8ccd1;
 }
@@ -145,8 +98,6 @@
   color: var(--chat-accent);
 }
 
-/* Monospace text used for language labels, code, and file names --
-   anywhere code-adjacent content appears outside the editor itself. */
 .mono-label {
   font-family: var(--font-mono);
 }
