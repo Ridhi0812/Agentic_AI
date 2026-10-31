@@ -30,18 +30,12 @@ client = AsyncClient(
 
 MAX_LOOPS = 8
 
-# .env se allowed models padho (comma-separated).
-# Dropdown mein sirf yahi models dikhenge, aur /chat sirf inhi ko chalne dega.
 ALLOWED_MODELS = [
     m.strip()
     for m in os.getenv("ALLOWED_MODELS", "gemma4:31b-cloud").split(",")
     if m.strip()
 ]
 
-# HTML formatter (extra model call) on/off switch.
-# NOTE: frontend (message.jsx) assistant replies ko HTML ki tarah render
-# karta hai, isliye false karne par bold/lists/headings ki formatting kho
-# jayegi. Normally "true" hi rakho.
 USE_FORMATTER = os.getenv("USE_FORMATTER", "true").strip().lower() == "true"
 
 WORKSPACE = Path(
@@ -62,9 +56,6 @@ def ensure_api_key():
             "Add it in the .env file (or in the Render environment variables)."
         )
 
-
-# FIXED: ".xlsx" yahan se hata diya. xlsx plain text nahi hota (binary zip hai),
-# warna upload/read karte waqt garbage text aata tha. xlsx ka alag handler neeche hai.
 PLAIN_TEXT_EXTENSIONS = {
     ".txt", ".md", ".csv", ".json", ".py", ".js", ".jsx", ".ts", ".tsx",
     ".html", ".css", ".xml", ".yaml", ".yml", ".ini", ".log",
@@ -75,8 +66,8 @@ def _decode_base64(encoded: str, name: str) -> bytes:
     if encoded.startswith("data:") and "," in encoded:
         encoded = encoded.split(",", 1)[1]
 
-    encoded = "".join(encoded.split())          # spaces / newlines hatao
-    encoded += "=" * (-len(encoded) % 4)        # padding theek karo
+    encoded = "".join(encoded.split())          
+    encoded += "=" * (-len(encoded) % 4)        
 
     try:
         return base64.b64decode(encoded)
@@ -203,11 +194,6 @@ def prepare_document_context(documents: list) -> str:
 
     return "\n\n--- Uploaded document ---\n\n".join(sections)
 
-
-# =========================================================
-# 2. TOOLS
-# =========================================================
-
 WRITABLE_EXTENSIONS = {
     ".txt", ".md", ".py", ".json",
     ".yaml", ".yml", ".html", ".css",
@@ -215,8 +201,6 @@ WRITABLE_EXTENSIONS = {
     ".csv", ".xml", ".ini", ".log", ".xlsx",
 }
 
-# NEW: edit_file sirf text files ke liye hai. xlsx binary hai, text ki tarah
-# edit karne se file corrupt ho jayegi.
 EDITABLE_EXTENSIONS = WRITABLE_EXTENSIONS - {".xlsx"}
 
 
@@ -344,8 +328,6 @@ class Tools:
         return target
 
     async def dispatch(self, name, args):
-        # ValueError raise karne ki jagah error string return karo,
-        # taaki ek galat tool call poori request ko crash na kare.
         if not isinstance(args, dict):
             return f"Tool error ({name}): arguments must be a dictionary."
 
@@ -362,8 +344,6 @@ class Tools:
 
         try:
             result = str(await methods[name](**args))
-
-            # Bahut bada output truncate karo
             if len(result) > MAX_TOOL_RESULT_CHARS:
                 result = (
                     result[:MAX_TOOL_RESULT_CHARS]
@@ -481,8 +461,6 @@ class Tools:
         if file_path.suffix.lower() == ".xlsx":
             wb = Workbook()
             ws = wb.active
-
-            # Kabhi kabhi model content string ki jagah seedha list bhej deta hai
             if not isinstance(content, str):
                 content = json.dumps(content, ensure_ascii=False)
 
@@ -519,8 +497,6 @@ class Tools:
 
         if old_text not in content:
             return "Edit failed: old_text was not found in the file."
-
-        # Sirf pehla match replace hota hai
         updated = content.replace(old_text, new_text, 1)
         file_path.write_text(updated, encoding="utf-8")
 
@@ -531,11 +507,6 @@ class Tools:
 
 _tools = Tools()
 tools = Tools.DEFINITIONS
-
-
-# =========================================================
-# 3. SYSTEM PROMPT
-# =========================================================
 
 SYSTEM_PROMPT = """
 Your name is Riya.
@@ -571,11 +542,6 @@ You are an intelligent closed-loop agent.
     any download link yourself; the system adds the download button
     automatically.
 """
-
-
-# =========================================================
-# 4. HTML FORMATTER
-# =========================================================
 
 async def formator(input_data, model_name):
     formatter_messages = [
@@ -634,11 +600,6 @@ Preserve the meaning. Do not add information that is absent from the input.
 
     return answer
 
-
-# =========================================================
-# 5. AGENT LOOP
-# =========================================================
-
 async def message(model_name, tokens, messages, make_url):
     ensure_api_key()
 
@@ -654,7 +615,7 @@ async def message(model_name, tokens, messages, make_url):
     loop_count = 0
     logs = []
     answer = ""
-    created_files = []   # files banayi/edit ki gayi, download links ke liye
+    created_files = []  
 
     while loop_count < MAX_LOOPS:
         loop_count += 1
@@ -685,7 +646,6 @@ async def message(model_name, tokens, messages, make_url):
 
             logs.append(f"Result: {result[:500]}")
 
-            # Successful write/edit ho to file ko download list me daalo
             if (
                 tool_name in ("write_file", "edit_file")
                 and isinstance(tool_args, dict)
@@ -716,12 +676,9 @@ async def message(model_name, tokens, messages, make_url):
 
     print(f"Agent loops: {loop_count}")
     print(f"Final answer: {answer}")
-
-    # formatter band ho to seedha plain answer wapas karo
     if USE_FORMATTER:
         answer = await formator(answer, model_name)
-
-    # Download links backend khud banata hai (model nahi), taaki galat na ho
+        
     if created_files:
         items = "".join(
             f'<li><a href="{make_url(rel)}" download>'
@@ -731,11 +688,6 @@ async def message(model_name, tokens, messages, make_url):
         answer += f"<ul>{items}</ul>"
 
     return answer
-
-
-# =========================================================
-# 6. FASTAPI CHAT ROUTE
-# =========================================================
 
 @router.post("/chat")
 async def chatbot(request: Request):
@@ -755,8 +707,6 @@ async def chatbot(request: Request):
                 detail="A model name is required."
             )
 
-        # Sirf allowed models chalne do, taaki dropdown ke bahar
-        # ka koi paid model manually bhejke quota na khaye.
         if model_name not in ALLOWED_MODELS:
             raise HTTPException(
                 status_code=400,
@@ -775,8 +725,6 @@ async def chatbot(request: Request):
                 detail="Each message must be an object."
             )
 
-        # Extract uploaded document content and attach it to
-        # the latest user message before sending it to the model.
         if documents:
             try:
                 document_context = prepare_document_context(documents)
@@ -823,7 +771,6 @@ async def chatbot(request: Request):
         )
 
         def make_url(rel_path):
-            # Full absolute URL (backend ka host/port apne aap)
             return str(request.url_for("download_file", filename=rel_path))
 
         answer = await message(model_name, tokens, messages, make_url)
@@ -846,21 +793,9 @@ async def chatbot(request: Request):
             detail=f"Chat request failed: {str(exc)}"
         ) from exc
 
-
-# =========================================================
-# 7. MODEL LIST ROUTE
-# =========================================================
-
-# Ollama se poori list lene ki jagah sirf ALLOWED_MODELS wapas karo.
-# Ollama ko call hi nahi hota, to ye route kabhi 502 nahi dega.
 @router.get("/model_list")
 async def models(request: Request):
     return {"models": ALLOWED_MODELS}
-
-
-# =========================================================
-# 8. FILE DOWNLOAD ROUTE
-# =========================================================
 
 @router.get("/download/{filename:path}")
 async def download_file(filename: str):
